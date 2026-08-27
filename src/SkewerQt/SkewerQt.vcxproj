@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{B2866838-44E7-4885-A869-5EF67CDE6103}</ProjectGuid>
+    <Keyword>QtVS_v304</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <QtMsBuild Condition="'$(QtMsBuild)'=='' OR !Exists('$(QtMsBuild)\qt.targets')">$(MSBuildProjectDirectory)\QtMsBuild</QtMsBuild>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration"><ConfigurationType>Application</ConfigurationType><UseDebugLibraries>true</UseDebugLibraries><PlatformToolset>v145</PlatformToolset><CharacterSet>Unicode</CharacterSet></PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration"><ConfigurationType>Application</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>v145</PlatformToolset><WholeProgramOptimization>true</WholeProgramOptimization><CharacterSet>Unicode</CharacterSet></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Condition="Exists('$(QtMsBuild)\qt_defaults.props')"><Import Project="$(QtMsBuild)\qt_defaults.props" /></ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(QtMsBuild)\Qt.props" />
+    <Import Project="..\..\build\Skewer.Common.props" />
+    <Import Project="..\..\build\Skewer.Qt.props" />
+  </ImportGroup>
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)obj\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
+    <SkewerQtDeployTool>$(QtInstallDir)\bin\windeployqt.exe</SkewerQtDeployTool>
+    <SkewerQtDeployMode Condition="'$(Configuration)'=='Debug'">--debug</SkewerQtDeployMode>
+    <SkewerQtDeployMode Condition="'$(Configuration)'=='Release'">--release</SkewerQtDeployMode>
+  </PropertyGroup>
+  <ItemDefinitionGroup><Link><SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation></Link></ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="MainWindow.cpp" />
+    <ClCompile Include="SceneAdapter.cpp" />
+    <ClCompile Include="SelectorGeometry.cpp" />
+    <ClCompile Include="WorkspaceStateStore.cpp" />
+    <ClCompile Include="main.cpp" />
+    <QtMoc Include="MainWindow.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="SceneAdapter.h" />
+    <ClInclude Include="SelectorGeometry.h" />
+    <ClInclude Include="WorkspaceStateStore.h" />
+  </ItemGroup>
+  <ItemGroup><QtRcc Include="SkewerQt.qrc" /></ItemGroup>
+  <ItemGroup><None Include="Qml\ViewerScene.qml" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="..\SkewerCore\SkewerCore.vcxproj"><Project>{A1875091-0BE3-44D0-B97A-A1E22E719691}</Project></ProjectReference></ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Condition="Exists('$(QtMsBuild)\qt.targets')"><Import Project="$(QtMsBuild)\qt.targets" /></ImportGroup>
+  <Target Name="DeploySkewerQtRuntime" AfterTargets="Build" Condition="'$(DesignTimeBuild)'!='true' AND '$(ConfigurationType)'=='Application'">
+    <Error Condition="!Exists('$(SkewerQtDeployTool)')" Text="SKEWER Qt deployment tool was not found at '$(SkewerQtDeployTool)'." />
+    <Exec Command="&quot;$(SkewerQtDeployTool)&quot; $(SkewerQtDeployMode) --qmldir &quot;$(ProjectDir)Qml&quot; --compiler-runtime --force --verbose 0 &quot;$(TargetPath)&quot;" EnvironmentVariables="VCINSTALLDIR=$(VCInstallDir)" />
+  </Target>
+</Project>

@@ -9,12 +9,14 @@ SKEWER (Skies Keyed Encounters: Weighting, Editing, and Regions) will be a GUI e
 
 The intended workflow is:
 
-1. Select a field and load its relevant MLD and ECT assets.
+1. Select an extracted game-data root, let SKEWER locate its single `FIELD` directory, and choose one of the fields enumerated from its ECT files.
 2. View the field's decoded GRND and GOBJ collision geometry in a 3D viewport.
 3. Select one or more collision triangles and edit their authored encounter selector without damaging the other packed triangle metadata.
 4. Inspect and edit the encounter tables reachable from those triangles, including the battle stage, overall encounter rate, and ordered encounter rows and weights.
-5. Use selected ALX-exported tables to show useful formation, enemy, and event context alongside otherwise numeric encounter IDs.
-6. Export edited ECT files and produce MLD outputs by applying validated, fixed-size triangle-metadata patches to the source files.
+5. Use `enemyencounter.csv` and `enemy.csv` to show useful formation and enemy context alongside otherwise numeric encounter IDs.
+6. Checkpoint each changed field as one auditable semantic patch file containing its MLD-selector and ECT-table edits.
+7. Select one or more changed fields for export; before publication, SKEWER invisibly preflights their current patches through the complete validation and output-generation pipeline.
+8. Atomically export the selected changed ECT/MLD outputs to a user-selected directory only when every selected field passes preflight.
 
 The normal editing experience should expose semantic concepts such as encounter regions, tables, formations, and weights. Raw packed values, source offsets, platform byte order, and compression are provenance or expert-detail concerns rather than the primary editing model.
 
@@ -25,9 +27,11 @@ This document is grounded in two current sources:
 - `D:\SoAInvestigate`, especially the encounter formula catalog and the July 2026 dungeon/overworld collision-selector studies.
 - `C:\Users\jahor\source\repos\jahorta\SPICE`, especially `SpiceEct`, `SpiceMLD`, and the typed `SpiceTrade` ALX interchange models.
 
+`D:\SoANotes\Mapping\Report - Overworld encounters.pdf` is retained as coarse historical mapping context. It distinguishes encounter zones from the eight tables within each zone and records 13 used overworld zones, but current `D:\SoAInvestigate` function and data-flow evidence is authoritative for concrete runtime distinctions.
+
 The research describes the game behavior; the SPICE code establishes which file structures and edit/export operations are already represented in reusable code. Planning statements below distinguish confirmed behavior from product intent and open work.
 
-SPICE is intended to be a pinned Git submodule dependency of SKEWER. SKEWER should consume its public semantic models, parsers, writers, and patch-planning APIs rather than copy their implementation. The submodule has not yet been added to this new repository; adding and pinning it belongs to the implementation/bootstrap plan, not to this documentation-only step.
+SPICE is a pinned Git submodule dependency at the repository root. SKEWER should consume its public semantic models, parsers, writers, and patch-planning APIs rather than copy their implementation.
 
 ## Confirmed game-data model
 
@@ -50,7 +54,11 @@ For the validated Catacombs assets (`a106a.mld` and `a106c.mld`), the authored s
 
 The runtime collision query finds the current triangle, decodes its packed metadata, and publishes the decoded encounter selector for the encounter system. The current evidence strongly supports this convention, but the research recommends spot-checking another dungeon before claiming universal coverage for every field in the game.
 
+Initial SKEWER authoring uses the complete ordinary format range: `0` means no encounters and `1` through `8` select the eight physical ECT tables in order. The Catacombs evidence happens to exercise only table IDs `1` through `7`; it does not redefine the eighth physical table as selector `0`.
+
 ### Area 99 / overworld selection
+
+Area 99 is retained as important background and a future target, but it is deferred from the initial SKEWER implementation. It coordinates multiple MLD assets for world X/Z buckets in addition to the contextual lookup and indexed ECT/ALX structure described below. The first supported fields are ordinary locations outside Area 99.
 
 Area 99 is intentionally not modeled as a direct triangle-to-table mapping. Its triangle selector is a local lane, normally `1` through `8`. The `fldEfcontrol` data combines that lane with:
 
@@ -118,7 +126,9 @@ The observed US Area 99 file has 135 indexed entries and 1,080 tables, including
 
 The patch planner verifies the source platform, compression state, resource identity, triangle and node indices, retained semantic hash, expected original bytes, non-overlap, and absence of conflicting edits before applying any write. SKEWER should preserve this plan-then-apply contract and present failures rather than weakening those checks.
 
-The current physical patcher is not yet a general MLD writer. GameCube/AKLZ triangle patching, arbitrary metadata editing, and topology changes are outside its supported boundary.
+The current physical patcher is not yet a general MLD writer. Initial SKEWER support is Dreamcast-only. GameCube/AKLZ input, triangle patching, arbitrary metadata editing, and topology changes are outside the initial product boundary even where an individual SPICE parser can decode the format.
+
+The selected dataset is treated as one platform. If discovery identifies any GameCube ECT or MLD file in the located `FIELD` directory, SKEWER rejects the entire directory with `GameCube is not yet supported.` rather than mixing capabilities or exposing a partially usable list.
 
 ### ALX-derived enrichment
 
@@ -128,7 +138,11 @@ The current physical patcher is not yet a general MLD writer. GameCube/AKLZ tria
 - `enemyencounter.csv`;
 - `enemyevent.csv`.
 
-These tables can enrich numeric encounter records with formation, enemy, placement, initiative, reward/stat, and related display context. They are reference/editing data with locale-specific schemas, ordering, duplicate IDs, and display strings that must be preserved. SKEWER should consume this narrow typed surface rather than depend on a generic collection of untyped ALX CSV rows.
+SKEWER's initial ALX scope is narrower than the complete typed SPICE surface: it consumes `enemyencounter.csv` and `enemy.csv`, but not `enemyevent.csv`. The encounter table provides field-grouped formation records whose entry IDs correspond to the encounter IDs stored in ECT rows. Each formation has eight enemy-reference slots. SPICE confirms that each slot already retains both an enemy ID and a localized reference name.
+
+The enemy ID is the source of truth for joining a formation slot to `enemy.csv`. Initial SKEWER joins use the canonical `enemy.csv` rows whose filter is exactly `*`; those rows are expected to provide one record per enemy ID. The formation slot's embedded name remains the immediate display label and an independent consistency check against the joined wildcard enemy record. Missing or duplicate wildcard records and name disagreements are diagnostics rather than reasons to substitute a different ID.
+
+These tables are initially reference data rather than SKEWER export targets. Their locale-specific schemas, ordering, duplicate IDs, filters, and display strings must be preserved. SKEWER should consume this narrow typed surface rather than depend on a generic collection of untyped ALX CSV rows.
 
 Native SPICE ownership remains authoritative for ECT and MLD data. ALX-derived data fills semantic gaps; it does not replace the native format models.
 
@@ -136,28 +150,54 @@ Native SPICE ownership remains authoritative for ECT and MLD data. ALX-derived d
 
 ### Required capabilities
 
-- Select a field from an explicit project/workspace definition rather than from unrelated loose files.
-- Resolve and load all MLD, ECT, and optional ALX context required by that field.
+- Let the user select an extracted game-data root and locate a directory named `FIELD` case-insensitively, counting the selected directory itself and searching descendants recursively.
+- Refuse to open the root if no `FIELD` directory or more than one `FIELD` directory is found; multiple candidates must be reported to the user.
+- Enumerate the field list from direct-child ECT files in the unique `FIELD` directory, using case-insensitive extension and stem comparison while retaining the actual paths.
+- Keep an ECT-derived field visible but disabled when no paired MLD with the same case-insensitive stem exists. MLD files without an ECT do not create list entries.
+- Keep `a099a` visible but disabled with an Area 99 support-deferred explanation.
+- Reject the entire FIELD directory as corrupted if any ECT or MLD is malformed enough that its platform cannot be determined.
+- Resolve and load the matching MLD/ECT pair and optional ALX context for the selected field.
 - Render decoded GRND and GOBJ triangles in a navigable 3D viewport.
-- Support picking, multi-selection, visibility controls, and coloring by authored selector.
+- Display all decoded GRND and GOBJ blocks by default and color every triangle by its active working selector, including the no-encounter selector `0`.
+- Support single-click selection, Ctrl-click toggle, Shift-click additive selection, visibility controls, and coloring by authored selector. Box/lasso selection and brush painting are deferred.
 - For ordinary fields, show the directly selected encounter table.
-- For Area 99, show authored lane plus position-, altitude-, and scenario-resolved zone/table results.
-- Edit selectors without changing the other packed triangle semantics.
-- Edit the complete ECT semantic model, including indexed Area 99 entries and `dam*` entries.
-- Explain and validate row weights without silently changing their order or normalizing malformed data.
-- Show optional ALX-derived names and formation/enemy details while keeping numeric IDs visible.
+- Provide an explicit jump-to-table button when the current triangle selection has one shared nonzero encounter selector; disable it for an empty, mixed-selector, or no-encounter selection.
+- Show only the encounter selector in the triangle inspector by default. Expose raw metadata words, decoded non-encounter properties, resource addresses, triangle/node indices, and provenance only when an expert-metadata option is enabled.
+- Show `Mixed` for a selection containing multiple selectors; choosing a selector applies it to the entire selection as one undoable operation.
+- Restrict authored selector edits to `0` for no encounters and decimal digits `1` through `8` for the eight encounter tables, while preserving every other packed triangle semantic.
+- Require exactly eight encounter tables for an initially supported ordinary field.
+- Edit each table's fixed 32 ordered encounter rows; table creation/removal and row creation/removal are outside the initial editor.
+- Permit the full representable 16-bit values for ECT fields in the first iteration. Explain and warn about suspicious ranges or row-weight totals without blocking the edit, changing row order, or normalizing data.
+- Let the user select an ALX 5.0.0 data directory containing both `enemyencounter.csv` and `enemy.csv`, and remember that directory globally.
+- Treat selection of the correct regional ALX dataset as the user's responsibility; warn about missing joins, inconsistent names, or other disagreements rather than blocking native editing.
+- Group ordinary `enemyencounter.csv` rows by the baked-in `<field-stem>_ep.enp` convention and join their entry IDs to ECT encounter IDs.
+- Treat Area 99 suffixes `01` through `13` as encounter-zone identities, not encounter-table identities; each zone still contains eight tables.
+- Resolve each enemy-reference ID against the `enemy.csv` row whose filter is exactly `*`, retaining the reference name already carried by `enemyencounter.csv` for display and consistency diagnostics.
 - Preview every intended file output and validation result before writing.
+- Maintain one executable-local workspace for the located FIELD dataset and one semantic patch file per changed field stem.
+- Keep UI/session state separate from per-field patch content.
+- Select one or more changed fields for export, with a dedicated command to select all patches in the active workspace. Invisibly preflight their current saved patches through source parsing, semantic resolution, SPICE MLD patch planning, ECT serialization, and output reparsing before any publication.
 - Export canonical ECT output for the chosen target platform.
 - Apply verified, fixed-size MLD patches in place to a copied/output asset, preserving unrelated bytes.
+- Let the user choose an export directory and write only files whose working content differs from the source, retaining their original basenames.
+- Present one confirmation listing every changed destination file that already exists before overwriting any of them.
+- Persist selector and ECT changes for every changed field in the active FIELD workspace. Checkpoint the current field's patch after semantic edits, on field switches, and during orderly program close, then restore the workspace on the next run without modifying source assets.
+- Require the executable directory to be writable. If it is not, warn the user that SKEWER is portable and must be moved to a writable location before editing can continue.
+- Before replacing the active FIELD workspace with a different game-data root, account for all retained field patches through an explicit export/archive/discard/cancel workflow.
 
 ### Safety and fidelity requirements
 
 - Source assets are never overwritten implicitly. “Patch in place” describes fixed-offset patching within the chosen output file, not unannounced modification of the user's only source copy.
+- Per-field patches store semantic expected and replacement values separately from source files. They may be loaded for audit even when source values have changed. A uniquely resolved mismatch may be explicitly accepted into the current patch state before export; unresolved or ambiguous identities remain hard failures.
+- Export has no separate dry-run action or expected-value approval step. It invisibly validates the selected current patch states and publishes nothing if any selected field fails.
+- Successful export retains the semantic patches unchanged and records source/output hashes, destination, warnings, already-applied entries, and result in a separate receipt.
+- Resource addresses in version 1 patches use canonical lowercase `0x`-prefixed eight-digit hexadecimal strings.
+- Reverting the last edit removes the empty patch automatically.
 - Unchanged source bytes and unrelated packed metadata must remain byte-identical.
-- Every editable triangle must retain a stable provenance identity from viewport selection through export.
+- Every editable triangle must retain a stable provenance identity from viewport selection through export. GRND and GOBJ use distinct key types because GOBJ identity additionally requires an object-node index.
 - Unsupported or ambiguous resources remain visible with diagnostics and are not guessed into an editable state.
 - Area-specific selector validity belongs in SKEWER's semantic validation layer, not in the low-level SPICE patch mechanism.
-- Derived colors, percentages, resolved Area 99 maps, and ALX display names are presentation data; raw semantic values and source provenance remain authoritative.
+- Derived colors, percentages, and ALX display names are presentation data; raw semantic values and source provenance remain authoritative.
 
 ## Initial non-goals
 
@@ -166,23 +206,15 @@ Native SPICE ownership remains authoritative for ECT and MLD data. ALX-derived d
 - Treating encounter checks as a simple per-frame percentage.
 - Treating ECT row weights as always-normalized percentages.
 - Treating an Area 99 triangle lane as a globally fixed encounter table.
-- General ALX CSV support beyond the explicitly typed tables needed for encounter context.
+- General ALX CSV support beyond `enemy.csv` and `enemyencounter.csv`.
+- Editing or exporting ALX CSV content in the initial SKEWER workflow.
+- GameCube field loading or output in the initial SKEWER workflow.
+- Area 99 field loading, visualization, editing, or export in the initial SKEWER workflow.
 - Editing ENP or other adjacent encounter data until a concrete SKEWER workflow requires it and ownership is defined.
-
-## Open planning questions
-
-These are not blockers for the project charter, but later planning documents must resolve them:
-
-1. What manifest defines a selectable field and the exact relationship among its MLD, ECT, optional ENP, region/platform, and ALX dataset?
-2. Is the first writable milestone Dreamcast-only, matching the current SPICE in-place MLD patch support, or must GameCube triangle output be implemented immediately?
-3. Which selector values are valid for each ordinary field, and what evidence/validation source owns that policy?
-4. How should the editor identify and switch Area 99 scenario pages and altitude views without overstating inferred game-state labels?
-5. Which ALX joins are display-only, and which enriched records—if any—will SKEWER eventually allow users to edit and export?
-6. How will modified files be named, grouped, and packaged so that a field export is complete and reproducible?
 
 ## Acceptance statement
 
-The first complete SKEWER workflow succeeds when a user can load a supported field, select visible GRND/GOBJ faces, understand the encounter mapping at those faces, change their selectors, edit the reachable ECT tables, review validation and ALX-derived context, and export outputs that reparse to the intended semantic values while preserving every unrelated source byte.
+The first complete SKEWER workflow succeeds when a user can load the `a106a` Dreamcast acceptance field, select visible GRND/GOBJ faces, understand the encounter mapping at those faces, change selectors between no-encounter and tables 1 through 8, edit its eight fixed-size ECT tables, review validation and optional ALX-derived context, and export only changed outputs that reparse to the intended semantic values while preserving every unrelated source byte.
 
 ## Research and implementation references
 
