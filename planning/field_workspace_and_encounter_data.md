@@ -148,14 +148,16 @@ SPICE's typed model confirms that an `EnemyEncounterRecord` contains:
 - initiative and magic-experience fields;
 - exactly eight `EnemyReference` slots.
 
-Each `EnemyReference` contains both an `enemyId` and a localized reference name. In the inspected US ALX 5.0.0 corpus, the field grouping is encoded by ENP-like filter filenames:
+Each `EnemyReference` contains both an `enemyId` and a localized reference name. ALX 5.0.0 uses platform-specific field-group filter filenames:
 
 ```text
-ordinary field:  a106a_ep.enp
-Area 99 zone:    a099a_01ep.enp through a099a_13ep.enp
+Dreamcast ordinary field:  A106A_EP.BIN
+Dreamcast Area 99 zone:    A099A_01EP.BIN through A099A_13EP.BIN
+GameCube ordinary field:   a106a_ep.enp
+GameCube Area 99 zone:     a099a_01ep.enp through a099a_13ep.enp
 ```
 
-**Decision:** preserve the exact filter string as the authoritative ALX group key and rely on the naming conventions baked into the only supported interchange version, ALX 5.0.0. Ordinary formation groups use `<field-stem>_ep.enp`, so `a106a.ect` and `a106a.mld` associate with `a106a_ep.enp`.
+**Decision:** preserve the imported filter string for provenance and use case-insensitive exact filename equality for association. Initial Dreamcast formation groups use `<FIELD-STEM>_EP.BIN`, so `a106a.ect` and `a106a.mld` associate with `A106A_EP.BIN`. SKEWER does not use prefix, suffix, or fuzzy matching. A selected dataset containing the GameCube `.enp` convention produces a non-blocking mismatch warning.
 
 For ordinary fields, the initial join is:
 
@@ -165,7 +167,7 @@ selected field stem
     -> ECT encounterId == EnemyEncounterRecord.entryId
 ```
 
-For future Area 99 support, the context resolver first identifies the active encounter zone. Zone numbers `01` through `13` in `a099a_01ep.enp` through `a099a_13ep.enp` are encounter-zone identities, not table identities. A zone group contains formation entries used by the zone, while the indexed ECT layout provides eight encounter tables per zone. After resolving the zone, the ECT encounter ID is joined to the formation `entryId` within that zone's exact ALX filter group.
+For future Area 99 support, the context resolver first identifies the active encounter zone. Zone numbers `01` through `13` in Dreamcast `A099A_01EP.BIN` through `A099A_13EP.BIN` (or the corresponding future GameCube `.enp` groups) are encounter-zone identities, not table identities. A zone group contains formation entries used by the zone, while the indexed ECT layout provides eight encounter tables per zone. After resolving the zone, the ECT encounter ID is joined to the formation `entryId` within that zone's exact ALX filter group.
 
 The January 2023 overworld report is coarse historical support for the 13-used-zones/eight-tables-per-zone structure and for approximate geographic boundaries. Current `D:\SoAInvestigate` evidence owns concrete runtime distinctions: `fldEfcontrol` combines position, altitude band, progress, and authored lane, and the active Area 99 selection resolves to an ECT/ENP subtable pair before the encounter roll.
 

@@ -15,6 +15,7 @@
   <ItemGroup>
     <ClCompile Include="..\..\SPICE\third-party\googletest-1.17.0\googletest\src\gtest-all.cc" />
     <ClCompile Include="run_tests.cpp" />
+    <ClCompile Include="test_alx_enrichment.cpp" />
     <ClCompile Include="test_field_discovery.cpp" />
     <ClCompile Include="test_editing_patch_export.cpp" />
     <ClCompile Include="test_scene_model.cpp" />

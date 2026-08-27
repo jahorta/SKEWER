@@ -4,6 +4,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -112,7 +113,22 @@ TEST_P(DreamcastFieldImportTest, LoadsOrdinaryEctMldPairWhenCorpusIsPresent) {
     }
     std::cout << stem << ": " << result.document->scene.triangles.size()
               << " triangles, " << grndBatches << " GRND batches, "
-              << gobjBatches << " GOBJ batches\n";
+              << gobjBatches << " GOBJ batches, "
+              << result.document->scene.contextTriangleCount() << " context triangles from "
+              << result.document->scene.contextEntryCount() << " entries\n";
+
+    if (stem == "A035B") {
+        const auto hasKind = [&](const skewer::core::ContextObjectKind kind) {
+            return std::any_of(result.document->scene.contextBatches.begin(),
+                result.document->scene.contextBatches.end(),
+                [&](const skewer::core::SceneContextBatch& batch) {
+                    return batch.kind == kind && batch.sourceEntryCount > 0U && batch.triangleCount() > 0U;
+                });
+        };
+        EXPECT_TRUE(hasKind(skewer::core::ContextObjectKind::Wall));
+        EXPECT_TRUE(hasKind(skewer::core::ContextObjectKind::WallUv));
+        EXPECT_TRUE(hasKind(skewer::core::ContextObjectKind::DoorWall));
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(

@@ -211,7 +211,7 @@ ExportPreflightResult ExportService::preflight(const std::filesystem::path& fiel
             spice::mld::parsing::MldParser parser{};
             const auto candidate = parser.parseBytes(bytes);
             std::vector<Diagnostic> candidateDiagnostics{};
-            auto scene = buildSceneModel(candidate, candidateDiagnostics);
+            auto scene = buildSceneModel(candidate, candidateDiagnostics, SceneBuildOptions{ .includeContext = false });
             result.diagnostics.insert(result.diagnostics.end(), candidateDiagnostics.begin(), candidateDiagnostics.end());
             bool matches = candidate.sourcePlatform == spice::mld::model::TargetPlatform::Dreamcast;
             for (const auto& [key, selector] : document.selectorEdits()) {

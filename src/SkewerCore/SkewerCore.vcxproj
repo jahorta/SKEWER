@@ -24,6 +24,7 @@
   </ImportGroup>
   <PropertyGroup><OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir><IntDir>$(SolutionDir)obj\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir></PropertyGroup>
   <ItemGroup>
+    <ClCompile Include="AlxEnrichment.cpp" />
     <ClCompile Include="ExportService.cpp" />
     <ClCompile Include="FieldDiscovery.cpp" />
     <ClCompile Include="FieldDocument.cpp" />
@@ -33,6 +34,7 @@
     <ClCompile Include="TrianglePicker.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AlxEnrichment.h" />
     <ClInclude Include="Diagnostics.h" />
     <ClInclude Include="ExportService.h" />
     <ClInclude Include="FieldDiscovery.h" />
@@ -44,6 +46,7 @@
     <ClInclude Include="TrianglePicker.h" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\SPICE\SpiceTrade\SpiceTrade.vcxproj"><Project>{B82365CC-8B46-4BD5-AFB7-799B34D6DA19}</Project></ProjectReference>
     <ProjectReference Include="..\..\SPICE\Compression\Compression.vcxproj"><Project>{4F68E37C-185F-4DE8-A4D7-647E6F3659C4}</Project></ProjectReference>
     <ProjectReference Include="..\..\SPICE\SpiceEct\SpiceEct.vcxproj"><Project>{81EF38D9-DF34-427B-A78A-73E38A14DAD8}</Project></ProjectReference>
     <ProjectReference Include="..\..\SPICE\SpiceMLD\SpiceMLD.vcxproj"><Project>{C44D37F8-61F5-4A1C-B983-16D79FBC9954}</Project></ProjectReference>

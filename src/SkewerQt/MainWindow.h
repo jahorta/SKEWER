@@ -4,6 +4,7 @@
 #include "WorkspaceStateStore.h"
 
 #include "SkewerCore/FieldDiscovery.h"
+#include "SkewerCore/AlxEnrichment.h"
 #include "SkewerCore/FieldDocument.h"
 #include "SkewerCore/FieldLoader.h"
 #include "SkewerCore/FieldPatch.h"
@@ -53,6 +54,9 @@ protected:
 
 private slots:
     void chooseGameDataRoot();
+    void chooseAlxDataRoot();
+    void clearAlxData();
+    void onAlxLoadFinished();
     void onDiscoveryFinished();
     void onFieldChanged(int index);
     void onFieldLoadFinished();
@@ -62,6 +66,7 @@ private slots:
     void jumpToSelectedTable();
     void applySelectedSelector();
     void onEncounterItemChanged(QTableWidgetItem* item);
+    void onEncounterSelectionChanged();
     void onTableHeaderEdited();
     void undoEdit();
     void redoEdit();
@@ -74,11 +79,15 @@ private slots:
 private:
     void buildUi();
     void beginDiscovery(const QString& rootPath, QString restoreField = {});
+    void beginAlxLoad(const QString& rootPath, bool interactive);
     void beginLoad(const skewer::core::FieldAssetPair& assets);
     void applyDocument(std::unique_ptr<skewer::core::FieldDocument> document);
     void populateFields(const skewer::core::FieldDiscoveryResult& result, const QString& restoreField);
     void populateResources();
     void populateEncounterTable(int tableIndex);
+    void updateFormationDock();
+    void refreshAlxFieldDiagnostics();
+    void renderDiagnostics();
     void syncSceneToQml();
     void syncSelectionToQml();
     void restoreDocumentState();
@@ -97,9 +106,14 @@ private:
     QTimer checkpointTimer_{};
     QFutureWatcher<skewer::core::FieldDiscoveryResult> discoveryWatcher_{};
     QFutureWatcher<skewer::core::FieldLoadResult> loadWatcher_{};
+    QFutureWatcher<skewer::core::AlxLoadResult> alxLoadWatcher_{};
     skewer::core::FieldDiscoveryResult catalog_{};
     QString pendingRestoreField_{};
     QString currentRoot_{};
+    QString alxDataRoot_{};
+    QString pendingAlxRoot_{};
+    bool alxLoadInteractive_ = false;
+    std::optional<skewer::core::AlxDataset> alxDataset_{};
     std::unique_ptr<skewer::core::FieldDocument> document_{};
     std::unique_ptr<skewer::core::FieldPatchStore> patchStore_{};
     std::vector<skewer::core::TriangleSelectorPatchEdit> preservedTriangleEdits_{};
@@ -109,6 +123,9 @@ private:
     SceneAdapter sceneAdapter_{};
     std::set<skewer::core::TriangleKey, skewer::core::TriangleKeyLess> selection_{};
     bool populating_ = false;
+    std::vector<skewer::core::Diagnostic> generalDiagnostics_{};
+    std::vector<skewer::core::Diagnostic> alxLoadDiagnostics_{};
+    std::vector<skewer::core::Diagnostic> alxFieldDiagnostics_{};
 
     QQuickWidget* quickView_ = nullptr;
     QComboBox* fieldCombo_ = nullptr;
@@ -125,10 +142,15 @@ private:
     QSpinBox* stageEditor_ = nullptr;
     QSpinBox* overallRateEditor_ = nullptr;
     QTableWidget* encounterTable_ = nullptr;
+    QLabel* formationStatus_ = nullptr;
+    QLabel* formationHeader_ = nullptr;
+    QTableWidget* formationTable_ = nullptr;
     QPlainTextEdit* diagnosticsView_ = nullptr;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;
     QAction* exportAction_ = nullptr;
+    QAction* selectAlxAction_ = nullptr;
+    QAction* clearAlxAction_ = nullptr;
 };
 
 } // namespace skewer::qt

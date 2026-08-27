@@ -2,9 +2,9 @@
 
 Skies Keyed Encounters: Weighting, Editing, and Regions.
 
-SKEWER is a portable C++/Qt tool for inspecting and, in later slices, editing
-*Skies of Arcadia* random-encounter regions and encounter tables. The current
-first implementation slice is a Dreamcast import and viewing environment.
+SKEWER is a portable C++/Qt tool for inspecting and editing *Skies of Arcadia*
+random-encounter regions and encounter tables. Current support targets
+ordinary Dreamcast fields.
 
 ## Current capabilities
 
@@ -16,16 +16,23 @@ first implementation slice is a Dreamcast import and viewing environment.
   submodule and reject compressed/GameCube or malformed selected assets.
 - Render all decoded GRND and GOBJ collision triangles in Qt Quick 3D, colored
   by encounter selector `0` through `8` (invalid selector digits are magenta).
+- Render `wall`, `walluv`, and `doorwall` object resources as a separate,
+  non-editable field-context layer in their authored bind pose, without
+  textures or animation.
 - Orbit, pan, zoom, frame, hide resources, and select exact triangles with a
   CPU BVH picker. GRND and GOBJ selections retain different semantic keys.
-- Inspect the shared selector and optional raw metadata on the left; inspect
-  all eight read-only ECT tables and their 32 entries on the right.
-- Resume the most recent root, field, table, camera, visibility, and selection
-  from `workspace/workspace.json` beside the executable.
+- Edit triangle encounter selectors and all eight fixed ECT tables, with
+  undo/redo and one auditable semantic patch document per changed field.
+- Invisibly preflight selected workspace patches and publish only changed ECT
+  or MLD files to a user-selected output directory.
+- Optionally load ALX 5.0.0 `enemy.csv` and `enemyencounter.csv` through
+  SpiceTrade and inspect the selected ECT row's formation and enemy names in a
+  separate read-only dock.
+- Resume the most recent root, field, table, camera, visibility, selection,
+  ALX directory, and field patches from the portable `workspace` directory.
 
-Editing, ALX enrichment, patch documents, hidden export preflight, and output
-publication remain intentionally outside this slice. Area 99 and GameCube are
-also deferred.
+Area 99, GameCube, ALX editing/export, and detailed enemy-stat inspection remain
+deferred.
 
 ## Build
 
@@ -62,6 +69,12 @@ Launch `SkewerQt.exe`, choose **Open Game Data Root...**, and select either the
 extracted game root or its `FIELD` directory. Select any enabled ordinary
 field. Left-click selects a triangle; Shift adds and Ctrl toggles. Left-drag
 orbits, right/middle-drag pans, and the mouse wheel zooms.
+The left scene tree controls encounter resources separately from the Wall,
+WallUV, and Doorwall context types.
+
+For optional enemy context, choose **ALX > Select ALX Data Directory...** and
+select the exact ALX 5.0.0 directory containing both `enemy.csv` and
+`enemyencounter.csv`. Select an ECT row to inspect its formation.
 
 The executable directory must be writable because SKEWER is portable and does
 not fall back to AppData. If it cannot create its local `workspace` directory,

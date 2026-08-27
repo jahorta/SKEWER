@@ -159,6 +159,8 @@ Native SPICE ownership remains authoritative for ECT and MLD data. ALX-derived d
 - Resolve and load the matching MLD/ECT pair and optional ALX context for the selected field.
 - Render decoded GRND and GOBJ triangles in a navigable 3D viewport.
 - Display all decoded GRND and GOBJ blocks by default and color every triangle by its active working selector, including the no-encounter selector `0`.
+- Render exact `wall`, `walluv`, and `doorwall` entries from their referenced Ninja object resources as a separate non-editable context layer. Use authored bind-pose transforms only; do not evaluate motions, textures, or materials.
+- Provide separate visibility groups for editable encounter surfaces and field context, with context controls for Wall, WallUV, and Doorwall. Combined scene bounds drive initial framing.
 - Support single-click selection, Ctrl-click toggle, Shift-click additive selection, visibility controls, and coloring by authored selector. Box/lasso selection and brush painting are deferred.
 - For ordinary fields, show the directly selected encounter table.
 - Provide an explicit jump-to-table button when the current triangle selection has one shared nonzero encounter selector; disable it for an empty, mixed-selector, or no-encounter selection.
@@ -170,7 +172,7 @@ Native SPICE ownership remains authoritative for ECT and MLD data. ALX-derived d
 - Permit the full representable 16-bit values for ECT fields in the first iteration. Explain and warn about suspicious ranges or row-weight totals without blocking the edit, changing row order, or normalizing data.
 - Let the user select an ALX 5.0.0 data directory containing both `enemyencounter.csv` and `enemy.csv`, and remember that directory globally.
 - Treat selection of the correct regional ALX dataset as the user's responsibility; warn about missing joins, inconsistent names, or other disagreements rather than blocking native editing.
-- Group ordinary `enemyencounter.csv` rows by the baked-in `<field-stem>_ep.enp` convention and join their entry IDs to ECT encounter IDs.
+- Group ordinary Dreamcast `enemyencounter.csv` rows by the baked-in `<FIELD-STEM>_EP.BIN` convention and join their entry IDs to ECT encounter IDs. Lowercase `.enp` filters are the distinct GameCube convention and are not used for the initial Dreamcast join.
 - Treat Area 99 suffixes `01` through `13` as encounter-zone identities, not encounter-table identities; each zone still contains eight tables.
 - Resolve each enemy-reference ID against the `enemy.csv` row whose filter is exactly `*`, retaining the reference name already carried by `enemyencounter.csv` for display and consistency diagnostics.
 - Preview every intended file output and validation result before writing.
@@ -203,6 +205,7 @@ Native SPICE ownership remains authoritative for ECT and MLD data. ALX-derived d
 
 - Replacing SPICE's ECT or MLD parsers with SKEWER-specific binary readers.
 - Editing collision topology, vertices, transforms, materials, textures, or unrelated packed surface properties.
+- Animating or texturing contextual wall and door geometry.
 - Treating encounter checks as a simple per-frame percentage.
 - Treating ECT row weights as always-normalized percentages.
 - Treating an Area 99 triangle lane as a globally fixed encounter table.

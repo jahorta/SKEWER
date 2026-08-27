@@ -3,6 +3,7 @@
 #include "Diagnostics.h"
 #include "TriangleKeys.h"
 
+#include "SPICE/SpiceMLD/Model/BlenderIrModel.h"
 #include "SPICE/SpiceMLD/Model/MldFile.h"
 
 #include <array>
@@ -54,18 +55,57 @@ struct SceneBatch {
     std::vector<std::size_t> triangleIndices{};
 };
 
+enum class ContextObjectKind {
+    Wall,
+    WallUv,
+    DoorWall,
+};
+
+struct SceneContextVertex {
+    SceneVec3 position{};
+    SceneVec3 normal{ 0.0F, 1.0F, 0.0F };
+};
+
+struct SceneContextBatch {
+    ContextObjectKind kind = ContextObjectKind::Wall;
+    std::string label{};
+    std::string visibilityId{};
+    std::size_t sourceEntryCount = 0;
+    std::vector<SceneContextVertex> vertices{};
+
+    [[nodiscard]] std::size_t triangleCount() const noexcept { return vertices.size() / 3U; }
+};
+
+struct ContextGeometryModel {
+    std::vector<SceneContextBatch> batches{};
+    SceneBounds bounds{};
+};
+
+struct SceneBuildOptions {
+    bool includeContext = true;
+};
+
 struct SceneModel {
     std::vector<SceneBatch> batches{};
     std::vector<SceneTriangle> triangles{};
+    std::vector<SceneContextBatch> contextBatches{};
     SceneBounds bounds{};
     SceneVec3 worldOrigin{};
     float extent = 1.0F;
+
+    [[nodiscard]] std::size_t contextTriangleCount() const noexcept;
+    [[nodiscard]] std::size_t contextEntryCount() const noexcept;
 };
 
 [[nodiscard]] std::uint8_t decodeEncounterSelector(std::uint16_t rawThirdWord) noexcept;
 
+[[nodiscard]] ContextGeometryModel buildContextGeometry(
+    const spice::mld::model::BlenderIrScene& scene,
+    std::vector<Diagnostic>& diagnostics);
+
 [[nodiscard]] SceneModel buildSceneModel(
     const spice::mld::model::MldFile& file,
-    std::vector<Diagnostic>& diagnostics);
+    std::vector<Diagnostic>& diagnostics,
+    const SceneBuildOptions& options = {});
 
 } // namespace skewer::core

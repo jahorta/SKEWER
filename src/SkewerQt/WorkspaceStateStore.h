@@ -14,6 +14,7 @@ namespace skewer::qt {
 struct WorkspaceState {
     QString gameDataRoot{};
     QString fieldDirectory{};
+    QString alxDataRoot{};
     QString activeField{};
     int encounterTable = 0;
     QVector3D orbitCenter{};

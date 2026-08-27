@@ -82,13 +82,13 @@ The main window layout is:
 |                      |                           |                         |
 | Field/resource tree  |     3D MLD viewport       | Encounter table list    |
 | GRND/GOBJ visibility |                           | Table/row editor        |
-| Triangle inspector   |                           | ALX formation/enemies   |
+| Triangle inspector   |                           | Separate ALX formation  |
 +----------------------+---------------------------+-------------------------+
 | Diagnostics, validation, dirty state, and export preview                  |
 +----------------------------------------------------------------------------+
 ```
 
-The selected-triangle inspector belongs on the left with the MLD resource tree. Encounter tables and ALX formation/enemy details belong on the right. This makes the boundary between geometry/selector authoring and ECT/encounter authoring visible in the interface.
+The selected-triangle inspector belongs on the left with the MLD resource tree. Encounter tables and the separate ALX formation dock belong on the right. The ALX dock follows the selected ECT row but remains visibly distinct from editable native ECT content. This makes the boundary between geometry/selector authoring, ECT authoring, and read-only enrichment visible in the interface.
 
 QML owns camera manipulation, scene presentation, and pointer gesture capture. C++ owns field state, scene conversion, exact selection, edits, and view models. `MainWindow` coordinates these components but should not become their implementation.
 
@@ -125,6 +125,10 @@ Long-running parsing and scene conversion should use `QtConcurrent` and `QFuture
 Geometry should be batched by GRND resource or GOBJ node rather than represented by one QML `Model` per face. Expanded per-face vertices may be used where independent selector colors are needed. Render batches must retain a mapping back to stable core keys; render-array indices are never document identities.
 
 All decoded GRND and GOBJ blocks are visible by default. Every triangle is colored by its active working selector, including selector `0`; selector-zero geometry uses its own subdued palette entry rather than being hidden. Resource visibility controls can hide blocks explicitly.
+
+The viewport has two independent render layers. **Encounter Surfaces** contains the selector-colored, pickable GRND/GOBJ batches and retains per-resource controls. **Field Context** contains only exact normalized `wall`, `walluv`, and `doorwall` entries, grouped by type. Context geometry is projected from SPICE's Sa3D Blender IR through entry and object-node transforms, including weighted bind-pose placement. The obsolete SPICE world model is not used.
+
+Context objects are untextured, unanimated, double-sided, and non-editable. Motion bindings and animation frame zero are ignored so authored node transforms remain the bind pose. Context batches do not receive `TriangleKey` values and are omitted from CPU picking and patch/export state. Both layers are visible by default and their combined bounds drive `Frame All`.
 
 Initial display modes should include:
 

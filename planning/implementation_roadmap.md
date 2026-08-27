@@ -122,6 +122,14 @@ Acceptance:
 - A selected face remains identified correctly when colors or display modes change.
 - Representative fields remain interactively usable without creating one QML object per triangle.
 
+Context extension:
+
+- Build supported object geometry from SPICE's Sa3D Blender IR, never the obsolete world model.
+- Accept only exact normalized `wall`, `walluv`, and `doorwall` entry names.
+- Render bind-pose geometry in a separate untextured, non-editable layer with type-level visibility controls.
+- Preserve GRND/GOBJ picking and patch identities; context geometry is presentation-only.
+- Frame the combined encounter and context bounds.
+
 ## Stage 3: selector editing and undo
 
 Add semantic MLD editing without writing files yet.
@@ -172,9 +180,11 @@ Acceptance:
 - Flat ECT serialization and reparsing reproduce the intended working model.
 - The UI labels the eight physical slots as tables `1` through `8` and presents selector `0` separately as no encounters.
 
-## Stage 5: ALX formation and enemy enrichment
+## Stage 5: ALX formation and enemy enrichment (implemented)
 
 Add read-only context from `enemyencounter.csv` and `enemy.csv`.
+
+Implementation status: SKEWER loads the two typed SpiceTrade tables asynchronously, remembers the optional directory in portable workspace schema version 3, associates ordinary Dreamcast fields through `<FIELD-STEM>_EP.BIN`, and displays the selected ECT row in a separate read-only formation dock. Detailed discrepancies are reported only in the diagnostics dock. Enemy combat-stat inspection remains deferred.
 
 Scope:
 
@@ -191,7 +201,7 @@ Scope:
 
 Acceptance:
 
-- Ordinary corpus fields group formation rows by their ENP-like filter.
+- Ordinary Dreamcast corpus fields group formation rows by their `_EP.BIN` filter.
 - An ECT encounter ID selects the matching formation within the active field group rather than a same-ID row from another field.
 - Empty enemy slots are not treated as real enemies.
 - Non-wildcard enemy variants remain represented by the imported ALX model but do not compete with the canonical wildcard row in the initial join.
@@ -267,7 +277,3 @@ GUI testing should concentrate on model/controller behavior and a small launch s
 
 - Use `a106a` as the initial ordinary Dreamcast vertical-slice and acceptance fixture because it has validated GRND and GOBJ encounter geometry.
 - Keep box/lasso and brush selector authoring in a later usability milestone unless early testing demonstrates they are necessary.
-
-## Open milestone question
-
-- Decide whether ALX dataset selection belongs in Stage 1 as workspace setup or can wait until Stage 5.

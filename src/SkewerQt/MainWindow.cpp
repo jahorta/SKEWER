@@ -19,6 +19,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMenuBar>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -43,6 +44,10 @@
 
 namespace skewer::qt {
 namespace {
+
+constexpr int kVisibilityIndexRole = Qt::UserRole;
+constexpr int kVisibilityIdRole = Qt::UserRole + 1;
+constexpr int kLegacyVisibilityLabelRole = Qt::UserRole + 2;
 
 [[nodiscard]] QString severityName(const skewer::core::DiagnosticSeverity severity) {
     switch (severity) {
@@ -71,6 +76,44 @@ namespace {
     return !less(lhs, rhs) && !less(rhs, lhs);
 }
 
+template <typename Function>
+void forEachVisibilityLeaf(QTreeWidgetItem* root, Function&& function) {
+    if (root == nullptr) return;
+    if (root->data(0, kVisibilityIndexRole).isValid()) {
+        function(root);
+        return;
+    }
+    for (int index = 0; index < root->childCount(); ++index) {
+        forEachVisibilityLeaf(root->child(index), function);
+    }
+}
+
+template <typename Function>
+void forEachVisibilityLeaf(const QTreeWidgetItem* root, Function&& function) {
+    if (root == nullptr) return;
+    if (root->data(0, kVisibilityIndexRole).isValid()) {
+        function(root);
+        return;
+    }
+    for (int index = 0; index < root->childCount(); ++index) {
+        forEachVisibilityLeaf(root->child(index), function);
+    }
+}
+
+void updateGroupCheckState(QTreeWidgetItem* group) {
+    if (group == nullptr || group->childCount() == 0) return;
+    int checked = 0;
+    int partial = 0;
+    for (int index = 0; index < group->childCount(); ++index) {
+        const auto state = group->child(index)->checkState(0);
+        if (state == Qt::Checked) ++checked;
+        else if (state == Qt::PartiallyChecked) ++partial;
+    }
+    if (checked == group->childCount()) group->setCheckState(0, Qt::Checked);
+    else if (checked == 0 && partial == 0) group->setCheckState(0, Qt::Unchecked);
+    else group->setCheckState(0, Qt::PartiallyChecked);
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent)
@@ -84,6 +127,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&checkpointTimer_, &QTimer::timeout, this, &MainWindow::saveCheckpoint);
     connect(&discoveryWatcher_, &QFutureWatcherBase::finished, this, &MainWindow::onDiscoveryFinished);
     connect(&loadWatcher_, &QFutureWatcherBase::finished, this, &MainWindow::onFieldLoadFinished);
+    connect(&alxLoadWatcher_, &QFutureWatcherBase::finished, this, &MainWindow::onAlxLoadFinished);
 
     startupState_ = stateStore_.load();
     if (!stateStore_.isWritable()) {
@@ -104,6 +148,10 @@ MainWindow::MainWindow(QWidget* parent)
             beginDiscovery(startupState_->gameDataRoot, startupState_->activeField);
         });
     }
+    if (startupState_.has_value() && !startupState_->alxDataRoot.isEmpty()) {
+        alxDataRoot_ = startupState_->alxDataRoot;
+        QTimer::singleShot(0, this, [this]() { beginAlxLoad(alxDataRoot_, false); });
+    }
 }
 
 MainWindow::~MainWindow() = default;
@@ -116,6 +164,12 @@ bool MainWindow::viewerReady() const noexcept {
 void MainWindow::buildUi() {
     auto* openAction = menuBar()->addAction(QStringLiteral("Open Game Data Root..."));
     connect(openAction, &QAction::triggered, this, &MainWindow::chooseGameDataRoot);
+    auto* alxMenu = menuBar()->addMenu(QStringLiteral("ALX"));
+    selectAlxAction_ = alxMenu->addAction(QStringLiteral("Select ALX Data Directory..."));
+    clearAlxAction_ = alxMenu->addAction(QStringLiteral("Clear ALX Data"));
+    clearAlxAction_->setEnabled(false);
+    connect(selectAlxAction_, &QAction::triggered, this, &MainWindow::chooseAlxDataRoot);
+    connect(clearAlxAction_, &QAction::triggered, this, &MainWindow::clearAlxData);
     undoAction_ = menuBar()->addAction(QStringLiteral("Undo"));
     undoAction_->setShortcut(QKeySequence::Undo);
     connect(undoAction_, &QAction::triggered, this, &MainWindow::undoEdit);
@@ -138,7 +192,7 @@ void MainWindow::buildUi() {
     inspectorLayout->addWidget(fieldCombo_);
     inspectorLayout->addWidget(new QLabel(QStringLiteral("MLD resources"), inspectorPanel));
     resourceTree_ = new QTreeWidget(inspectorPanel);
-    resourceTree_->setHeaderLabels({ QStringLiteral("GRND / GOBJ instances"), QStringLiteral("State") });
+    resourceTree_->setHeaderLabels({ QStringLiteral("Scene layers"), QStringLiteral("State") });
     inspectorLayout->addWidget(resourceTree_, 1);
     inspectorLayout->addWidget(new QLabel(QStringLiteral("Selected triangle(s)"), inspectorPanel));
     selectorLabel_ = new QLabel(QStringLiteral("No selection"), inspectorPanel);
@@ -205,6 +259,26 @@ void MainWindow::buildUi() {
     ectDock->setAllowedAreas(Qt::RightDockWidgetArea);
     addDockWidget(Qt::RightDockWidgetArea, ectDock);
 
+    auto* formationPanel = new QWidget(this);
+    auto* formationLayout = new QVBoxLayout(formationPanel);
+    formationStatus_ = new QLabel(QStringLiteral("No ALX data selected."), formationPanel);
+    formationStatus_->setWordWrap(true);
+    formationLayout->addWidget(formationStatus_);
+    formationHeader_ = new QLabel(QStringLiteral("Select an ECT row to inspect its formation."), formationPanel);
+    formationHeader_->setWordWrap(true);
+    formationLayout->addWidget(formationHeader_);
+    formationTable_ = new QTableWidget(8, 3, formationPanel);
+    formationTable_->setHorizontalHeaderLabels(
+        { QStringLiteral("Slot"), QStringLiteral("Enemy ID"), QStringLiteral("Enemy") });
+    formationTable_->horizontalHeader()->setStretchLastSection(true);
+    formationTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    formationTable_->setSelectionMode(QAbstractItemView::NoSelection);
+    formationLayout->addWidget(formationTable_, 1);
+    auto* formationDock = new QDockWidget(QStringLiteral("ALX formation"), this);
+    formationDock->setWidget(formationPanel);
+    formationDock->setAllowedAreas(Qt::RightDockWidgetArea);
+    addDockWidget(Qt::RightDockWidgetArea, formationDock);
+
     diagnosticsView_ = new QPlainTextEdit(this);
     diagnosticsView_->setReadOnly(true);
     diagnosticsView_->setMaximumBlockCount(2000);
@@ -221,8 +295,12 @@ void MainWindow::buildUi() {
             syncSceneToQml();
             syncSelectionToQml();
         } else if (status == QQuickWidget::Error) {
-            diagnosticsView_->appendPlainText(QStringLiteral("ERROR: The Qt Quick 3D viewer failed to load."));
-            for (const auto& error : quickView_->errors()) diagnosticsView_->appendPlainText(error.toString());
+            std::vector<skewer::core::Diagnostic> diagnostics{
+                { skewer::core::DiagnosticSeverity::Error, "The Qt Quick 3D viewer failed to load." }
+            };
+            for (const auto& error : quickView_->errors()) diagnostics.push_back(
+                { skewer::core::DiagnosticSeverity::Error, error.toString().toStdString() });
+            appendDiagnostics(diagnostics, false);
         }
     });
     quickView_->setSource(QUrl(QStringLiteral("qrc:/qml/Qml/ViewerScene.qml")));
@@ -235,6 +313,7 @@ void MainWindow::buildUi() {
     connect(applySelectorButton_, &QPushButton::clicked, this, &MainWindow::applySelectedSelector);
     connect(rebaseButton_, &QPushButton::clicked, this, &MainWindow::rebaseConflicts);
     connect(encounterTable_, &QTableWidget::itemChanged, this, &MainWindow::onEncounterItemChanged);
+    connect(encounterTable_, &QTableWidget::itemSelectionChanged, this, &MainWindow::onEncounterSelectionChanged);
     connect(stageEditor_, qOverload<int>(&QSpinBox::valueChanged), this, &MainWindow::onTableHeaderEdited);
     connect(overallRateEditor_, qOverload<int>(&QSpinBox::valueChanged), this, &MainWindow::onTableHeaderEdited);
     connect(expertCheck_, &QCheckBox::toggled, this, [this](const bool checked) {
@@ -280,6 +359,71 @@ void MainWindow::chooseGameDataRoot() {
     beginDiscovery(directory);
 }
 
+void MainWindow::chooseAlxDataRoot() {
+    if (alxLoadWatcher_.isRunning()) return;
+    const auto initial = alxDataRoot_.isEmpty() ? QDir::homePath() : alxDataRoot_;
+    const auto directory = QFileDialog::getExistingDirectory(this,
+        QStringLiteral("Select ALX 5.0.0 data directory"), initial);
+    if (!directory.isEmpty()) beginAlxLoad(directory, true);
+}
+
+void MainWindow::clearAlxData() {
+    if (alxLoadWatcher_.isRunning()) return;
+    alxDataset_.reset();
+    alxDataRoot_.clear();
+    pendingAlxRoot_.clear();
+    alxLoadDiagnostics_.clear();
+    alxFieldDiagnostics_.clear();
+    clearAlxAction_->setEnabled(false);
+    updateFormationDock();
+    renderDiagnostics();
+    scheduleCheckpoint();
+    statusBar()->showMessage(QStringLiteral("ALX enrichment disabled."), 10000);
+}
+
+void MainWindow::beginAlxLoad(const QString& rootPath, const bool interactive) {
+    if (rootPath.isEmpty() || alxLoadWatcher_.isRunning()) return;
+    pendingAlxRoot_ = QDir::cleanPath(rootPath);
+    alxLoadInteractive_ = interactive;
+    selectAlxAction_->setEnabled(false);
+    clearAlxAction_->setEnabled(false);
+    formationStatus_->setText(QStringLiteral("Loading ALX data from %1...").arg(pendingAlxRoot_));
+    formationHeader_->setText(QStringLiteral("Formation enrichment is loading."));
+    formationTable_->clearContents();
+    const auto path = std::filesystem::path(pendingAlxRoot_.toStdWString());
+    alxLoadWatcher_.setFuture(QtConcurrent::run([path]() {
+        return skewer::core::loadAlxDataset(path);
+    }));
+}
+
+void MainWindow::onAlxLoadFinished() {
+    auto result = alxLoadWatcher_.future().takeResult();
+    alxLoadDiagnostics_ = result.diagnostics;
+    const auto attemptedRoot = pendingAlxRoot_;
+    pendingAlxRoot_.clear();
+    selectAlxAction_->setEnabled(true);
+    if (result.ok()) {
+        alxDataset_ = std::move(*result.dataset);
+        alxDataRoot_ = attemptedRoot;
+        clearAlxAction_->setEnabled(true);
+        refreshAlxFieldDiagnostics();
+        updateFormationDock();
+        scheduleCheckpoint();
+        statusBar()->showMessage(QStringLiteral("Loaded ALX enrichment data."), 10000);
+    } else {
+        clearAlxAction_->setEnabled(alxDataset_.has_value() || !alxDataRoot_.isEmpty());
+        refreshAlxFieldDiagnostics();
+        updateFormationDock();
+        statusBar()->showMessage(QStringLiteral("ALX enrichment could not be loaded; native editing remains available."), 10000);
+        if (alxLoadInteractive_) {
+            QMessageBox::warning(this, QStringLiteral("Cannot load ALX data"),
+                QStringLiteral("The selected directory was not adopted. The existing ALX dataset, if any, remains active. Review the diagnostics for details."));
+        }
+    }
+    alxLoadInteractive_ = false;
+    renderDiagnostics();
+}
+
 void MainWindow::beginDiscovery(const QString& rootPath, QString restoreField) {
     if (discoveryWatcher_.isRunning() || loadWatcher_.isRunning()) return;
     if (!currentRoot_.isEmpty()) saveCheckpoint();
@@ -288,6 +432,8 @@ void MainWindow::beginDiscovery(const QString& rootPath, QString restoreField) {
     document_.reset();
     picker_.reset();
     selection_.clear();
+    alxFieldDiagnostics_.clear();
+    renderDiagnostics();
     sceneAdapter_.setScene(nullptr);
     syncSceneToQml();
     syncSelectionToQml();
@@ -361,10 +507,13 @@ void MainWindow::beginLoad(const skewer::core::FieldAssetPair& assets) {
     document_.reset();
     picker_.reset();
     selection_.clear();
+    alxFieldDiagnostics_.clear();
+    renderDiagnostics();
     sceneAdapter_.setScene(nullptr);
     syncSceneToQml();
     syncSelectionToQml();
     resourceTree_->clear();
+    updateFormationDock();
     statusBar()->showMessage(QStringLiteral("Loading %1...").arg(QString::fromStdString(assets.stem)));
     loadWatcher_.setFuture(QtConcurrent::run([assets]() {
         return skewer::core::FieldLoader::load(assets);
@@ -388,8 +537,8 @@ void MainWindow::onFieldLoadFinished() {
 void MainWindow::applyDocument(std::unique_ptr<skewer::core::FieldDocument> document) {
     document_ = std::move(document);
     if (document_->readOnly) {
-        diagnosticsView_->appendPlainText(QStringLiteral("ERROR: %1")
-            .arg(QString::fromStdString(document_->readOnlyReason)));
+        appendDiagnostics({ { skewer::core::DiagnosticSeverity::Error,
+            document_->readOnlyReason, document_->assets.mldPath } }, false);
     }
     restoreFieldPatch();
     picker_ = std::make_unique<skewer::core::TrianglePicker>(document_->scene);
@@ -400,11 +549,15 @@ void MainWindow::applyDocument(std::unique_ptr<skewer::core::FieldDocument> docu
     syncSelectionToQml();
     restoreDocumentState();
     populateEncounterTable(tableList_->currentRow() < 0 ? 0 : tableList_->currentRow());
+    refreshAlxFieldDiagnostics();
+    updateFormationDock();
     updateEditingState();
-    statusBar()->showMessage(QStringLiteral("Loaded %1: %2 triangles in %3 render batches.%4")
+    statusBar()->showMessage(QStringLiteral("Loaded %1: %2 encounter triangles in %3 batches; %4 context triangles from %5 entries.%6")
         .arg(QString::fromStdString(document_->assets.stem))
         .arg(document_->scene.triangles.size())
         .arg(document_->scene.batches.size())
+        .arg(document_->scene.contextTriangleCount())
+        .arg(document_->scene.contextEntryCount())
         .arg(document_->readOnly ? QStringLiteral(" Read-only due to malformed selector data.") : QString{}));
     scheduleCheckpoint();
 }
@@ -413,13 +566,43 @@ void MainWindow::populateResources() {
     populating_ = true;
     resourceTree_->clear();
     if (document_ != nullptr) {
+        auto* encounterGroup = new QTreeWidgetItem(resourceTree_);
+        encounterGroup->setText(0, QStringLiteral("Encounter Surfaces"));
+        encounterGroup->setText(1, QStringLiteral("%1 triangles").arg(document_->scene.triangles.size()));
+        encounterGroup->setFlags(encounterGroup->flags() | Qt::ItemIsUserCheckable);
+        encounterGroup->setCheckState(0, Qt::Checked);
+        encounterGroup->setExpanded(true);
         for (std::size_t index = 0; index < document_->scene.batches.size(); ++index) {
             const auto& batch = document_->scene.batches[index];
-            auto* item = new QTreeWidgetItem(resourceTree_);
+            auto* item = new QTreeWidgetItem(encounterGroup);
             item->setText(0, QString::fromStdString(batch.label));
-            item->setData(0, Qt::UserRole, static_cast<qulonglong>(index));
+            item->setData(0, kVisibilityIndexRole, static_cast<qulonglong>(index));
+            item->setData(0, kVisibilityIdRole,
+                QStringLiteral("encounter:%1").arg(QString::fromStdString(batch.label)));
+            item->setData(0, kLegacyVisibilityLabelRole, QString::fromStdString(batch.label));
             item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
             item->setCheckState(0, Qt::Checked);
+        }
+        if (!document_->scene.contextBatches.empty()) {
+            auto* contextGroup = new QTreeWidgetItem(resourceTree_);
+            contextGroup->setText(0, QStringLiteral("Field Context"));
+            contextGroup->setText(1, QStringLiteral("%1 entries / %2 triangles")
+                .arg(document_->scene.contextEntryCount()).arg(document_->scene.contextTriangleCount()));
+            contextGroup->setFlags(contextGroup->flags() | Qt::ItemIsUserCheckable);
+            contextGroup->setCheckState(0, Qt::Checked);
+            contextGroup->setExpanded(true);
+            for (std::size_t index = 0; index < document_->scene.contextBatches.size(); ++index) {
+                const auto& batch = document_->scene.contextBatches[index];
+                auto* item = new QTreeWidgetItem(contextGroup);
+                item->setText(0, QString::fromStdString(batch.label));
+                item->setText(1, QStringLiteral("%1 entries / %2 triangles")
+                    .arg(batch.sourceEntryCount).arg(batch.triangleCount()));
+                item->setData(0, kVisibilityIndexRole,
+                    static_cast<qulonglong>(document_->scene.batches.size() + index));
+                item->setData(0, kVisibilityIdRole, QString::fromStdString(batch.visibilityId));
+                item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+                item->setCheckState(0, Qt::Checked);
+            }
         }
     }
     populating_ = false;
@@ -428,8 +611,21 @@ void MainWindow::populateResources() {
 void MainWindow::onResourceVisibilityChanged(QTreeWidgetItem* item, const int column) {
     if (populating_ || document_ == nullptr || item == nullptr || column != 0) return;
     auto visibility = sceneAdapter_.visibility();
-    const auto index = static_cast<std::size_t>(item->data(0, Qt::UserRole).toULongLong());
-    if (index < visibility.size()) visibility[index] = item->checkState(0) == Qt::Checked ? 1U : 0U;
+    populating_ = true;
+    if (!item->data(0, kVisibilityIndexRole).isValid()) {
+        const auto state = item->checkState(0) == Qt::Unchecked ? Qt::Unchecked : Qt::Checked;
+        forEachVisibilityLeaf(item, [&](QTreeWidgetItem* leaf) {
+            leaf->setCheckState(0, state);
+            const auto index = static_cast<std::size_t>(leaf->data(0, kVisibilityIndexRole).toULongLong());
+            if (index < visibility.size()) visibility[index] = state == Qt::Checked ? 1U : 0U;
+        });
+        item->setCheckState(0, state);
+    } else {
+        const auto index = static_cast<std::size_t>(item->data(0, kVisibilityIndexRole).toULongLong());
+        if (index < visibility.size()) visibility[index] = item->checkState(0) == Qt::Checked ? 1U : 0U;
+        updateGroupCheckState(item->parent());
+    }
+    populating_ = false;
     sceneAdapter_.setVisibility(std::move(visibility));
     syncSceneToQml();
     scheduleCheckpoint();
@@ -543,7 +739,8 @@ void MainWindow::onEncounterItemChanged(QTableWidgetItem* item) {
     bool valid = false;
     const auto value = item->text().toUInt(&valid);
     if (!valid || value > 65535U) {
-        diagnosticsView_->appendPlainText(QStringLiteral("WARNING: ECT values must be integers from 0 through 65535."));
+        appendDiagnostics({ { skewer::core::DiagnosticSeverity::Warning,
+            "ECT values must be integers from 0 through 65535.", document_->assets.ectPath } }, false);
         populateEncounterTable(tableList_->currentRow());
         return;
     }
@@ -553,6 +750,10 @@ void MainWindow::onEncounterItemChanged(QTableWidgetItem* item) {
     const auto result = document_->setEctValue(key, static_cast<std::uint16_t>(value));
     appendDiagnostics(result.diagnostics, false);
     if (result.changed) refreshAfterSemanticEdit();
+}
+
+void MainWindow::onEncounterSelectionChanged() {
+    if (!populating_) updateFormationDock();
 }
 
 void MainWindow::onTableHeaderEdited() {
@@ -580,6 +781,8 @@ void MainWindow::refreshAfterSemanticEdit() {
     syncSceneToQml();
     syncSelectionToQml();
     populateEncounterTable(tableList_->currentRow());
+    refreshAlxFieldDiagnostics();
+    updateFormationDock();
     updateEditingState();
     scheduleCheckpoint();
 }
@@ -598,12 +801,17 @@ void MainWindow::updateEditingState() {
     rebaseButton_->setVisible(!patchConflicts_.empty());
     rebaseButton_->setEnabled(writable);
     if (document_ != nullptr) {
-        for (int row = 0; row < resourceTree_->topLevelItemCount() && static_cast<std::size_t>(row) < document_->scene.batches.size(); ++row) {
-            const auto& batch = document_->scene.batches[static_cast<std::size_t>(row)];
-            const bool modified = std::any_of(batch.triangleIndices.begin(), batch.triangleIndices.end(), [&](const std::size_t index) {
-                return index < document_->scene.triangles.size() && document_->isTriangleModified(document_->scene.triangles[index].key);
+        for (int row = 0; row < resourceTree_->topLevelItemCount(); ++row) {
+            forEachVisibilityLeaf(resourceTree_->topLevelItem(row), [&](QTreeWidgetItem* item) {
+                const auto batchIndex = static_cast<std::size_t>(
+                    item->data(0, kVisibilityIndexRole).toULongLong());
+                if (batchIndex >= document_->scene.batches.size()) return;
+                const auto& batch = document_->scene.batches[batchIndex];
+                const bool modified = std::any_of(batch.triangleIndices.begin(), batch.triangleIndices.end(), [&](const std::size_t index) {
+                    return index < document_->scene.triangles.size() && document_->isTriangleModified(document_->scene.triangles[index].key);
+                });
+                item->setText(1, modified ? QStringLiteral("Modified") : QString{});
             });
-            resourceTree_->topLevelItem(row)->setText(1, modified ? QStringLiteral("Modified") : QString{});
         }
         setWindowTitle(QStringLiteral("SKEWER - %1%2")
             .arg(QString::fromStdString(document_->assets.stem))
@@ -626,7 +834,8 @@ void MainWindow::restoreFieldPatch() {
     if (document_->readOnly) {
         preservedTriangleEdits_ = loaded.patch->triangleSelectorEdits;
         preservedEctEdits_ = loaded.patch->ectValueEdits;
-        diagnosticsView_->appendPlainText(QStringLiteral("WARNING: The saved patch was retained but not applied because this field is read-only."));
+        appendDiagnostics({ { skewer::core::DiagnosticSeverity::Warning,
+            "The saved patch was retained but not applied because this field is read-only.", path } }, false);
         return;
     }
     auto restored = skewer::core::restoreFieldPatch(*document_, *loaded.patch);
@@ -635,8 +844,8 @@ void MainWindow::restoreFieldPatch() {
     patchConflicts_ = std::move(restored.conflicts);
     appendDiagnostics(restored.diagnostics, false);
     for (const auto& conflict : patchConflicts_) {
-        diagnosticsView_->appendPlainText(QStringLiteral("WARNING: Patch conflict: %1 Current value: %2")
-            .arg(QString::fromStdString(conflict.message)).arg(conflict.current));
+        appendDiagnostics({ { skewer::core::DiagnosticSeverity::Warning,
+            "Patch conflict: " + conflict.message + " Current value: " + std::to_string(conflict.current), path } }, false);
     }
 }
 
@@ -807,6 +1016,7 @@ void MainWindow::onTableChanged(const int row) {
 }
 
 void MainWindow::populateEncounterTable(const int tableIndex) {
+    const int selectedRow = encounterTable_->currentRow();
     populating_ = true;
     encounterTable_->clearContents();
     if (document_ == nullptr || tableIndex < 0) {
@@ -836,8 +1046,68 @@ void MainWindow::populateEncounterTable(const int tableIndex) {
         encounterTable_->setItem(row, 1, encounterId);
         encounterTable_->setItem(row, 2, weight);
     }
+    encounterTable_->selectRow(selectedRow >= 0 && selectedRow < encounterTable_->rowCount()
+        ? selectedRow : 0);
     populating_ = false;
     updateEditingState();
+    updateFormationDock();
+}
+
+void MainWindow::updateFormationDock() {
+    if (formationStatus_ == nullptr || formationHeader_ == nullptr || formationTable_ == nullptr) return;
+    formationTable_->clearContents();
+    if (alxLoadWatcher_.isRunning()) return;
+    if (!alxDataset_.has_value()) {
+        formationStatus_->setText(alxDataRoot_.isEmpty()
+            ? QStringLiteral("No ALX data selected.")
+            : QStringLiteral("The remembered ALX data is unavailable. Native editing is unaffected."));
+        formationHeader_->setText(QStringLiteral("Select a valid ALX 5.0.0 data directory to inspect formations."));
+        return;
+    }
+    formationStatus_->setText(QStringLiteral("Loaded %1 ALX data: %2")
+        .arg(QString::fromLatin1(spice::trade::alx::toString(alxDataset_->locale())))
+        .arg(QString::fromStdWString(alxDataset_->sourceRoot().wstring())));
+    if (document_ == nullptr || tableList_->currentRow() < 0 || encounterTable_->currentRow() < 0) {
+        formationHeader_->setText(QStringLiteral("Select an ECT row to inspect its formation."));
+        return;
+    }
+    const auto* flat = std::get_if<spice::ect::EctFlatContent>(&document_->workingEct.content);
+    const auto tableIndex = static_cast<std::size_t>(tableList_->currentRow());
+    const auto rowIndex = static_cast<std::size_t>(encounterTable_->currentRow());
+    if (flat == nullptr || tableIndex >= flat->tables.size() ||
+        rowIndex >= flat->tables[tableIndex].encounters.size()) {
+        formationHeader_->setText(QStringLiteral("The selected ECT row is unavailable."));
+        return;
+    }
+    const auto encounterId = flat->tables[tableIndex].encounters[rowIndex].encounterId;
+    const auto formation = alxDataset_->resolveFormation(document_->assets.stem, encounterId);
+    if (formation.status != skewer::core::FormationResolutionStatus::Unique) {
+        formationHeader_->setText(QStringLiteral("%1 / encounter %2: no unique formation is available.")
+            .arg(QString::fromStdString(formation.filter)).arg(encounterId));
+        return;
+    }
+    formationHeader_->setText(QStringLiteral("%1 / encounter %2 — Initiative %3, Magic EXP %4")
+        .arg(QString::fromStdString(formation.filter)).arg(encounterId)
+        .arg(*formation.initiative).arg(*formation.magicExperience));
+    for (int row = 0; row < static_cast<int>(formation.enemies.size()); ++row) {
+        const auto& enemy = formation.enemies[static_cast<std::size_t>(row)];
+        formationTable_->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
+        formationTable_->setItem(row, 1, new QTableWidgetItem(
+            enemy.empty() ? QStringLiteral("—") : QString::number(enemy.enemyId)));
+        formationTable_->setItem(row, 2, new QTableWidgetItem(
+            enemy.empty() ? QStringLiteral("Empty") : QString::fromStdString(enemy.displayName)));
+    }
+}
+
+void MainWindow::refreshAlxFieldDiagnostics() {
+    alxFieldDiagnostics_.clear();
+    if (alxDataset_.has_value() && document_ != nullptr) {
+        if (const auto* flat = std::get_if<spice::ect::EctFlatContent>(&document_->workingEct.content)) {
+            alxFieldDiagnostics_ = alxDataset_->validateField(
+                document_->assets.stem, *flat, document_->assets.ectPath);
+        }
+    }
+    renderDiagnostics();
 }
 
 void MainWindow::frameAll() {
@@ -869,11 +1139,18 @@ void MainWindow::restoreDocumentState() {
     }
     auto visibility = sceneAdapter_.visibility();
     for (int row = 0; row < resourceTree_->topLevelItemCount(); ++row) {
-        auto* item = resourceTree_->topLevelItem(row);
-        if (startupState_->hiddenBatches.contains(item->text(0))) {
+        auto* group = resourceTree_->topLevelItem(row);
+        forEachVisibilityLeaf(group, [&](QTreeWidgetItem* item) {
+            const auto id = item->data(0, kVisibilityIdRole).toString();
+            const auto legacy = item->data(0, kLegacyVisibilityLabelRole).toString();
+            if (!startupState_->hiddenBatches.contains(id) &&
+                (legacy.isEmpty() || !startupState_->hiddenBatches.contains(legacy))) return;
             item->setCheckState(0, Qt::Unchecked);
-            if (static_cast<std::size_t>(row) < visibility.size()) visibility[static_cast<std::size_t>(row)] = 0U;
-        }
+            const auto index = static_cast<std::size_t>(
+                item->data(0, kVisibilityIndexRole).toULongLong());
+            if (index < visibility.size()) visibility[index] = 0U;
+        });
+        updateGroupCheckState(group);
     }
     sceneAdapter_.setVisibility(std::move(visibility));
     for (const auto& key : startupState_->selection) {
@@ -897,6 +1174,7 @@ WorkspaceState MainWindow::captureState() const {
     WorkspaceState state{};
     state.gameDataRoot = currentRoot_;
     if (catalog_.fieldDirectory.has_value()) state.fieldDirectory = QString::fromStdWString(catalog_.fieldDirectory->wstring());
+    state.alxDataRoot = alxDataRoot_;
     if (document_ != nullptr) state.activeField = QString::fromStdString(document_->assets.stem);
     state.encounterTable = std::max(0, tableList_->currentRow());
     state.expertMetadata = expertCheck_->isChecked();
@@ -908,8 +1186,11 @@ WorkspaceState MainWindow::captureState() const {
         state.orbitPitch = root->property("orbitPitch").toFloat();
     }
     for (int row = 0; row < resourceTree_->topLevelItemCount(); ++row) {
-        const auto* item = resourceTree_->topLevelItem(row);
-        if (item->checkState(0) != Qt::Checked) state.hiddenBatches.push_back(item->text(0));
+        forEachVisibilityLeaf(resourceTree_->topLevelItem(row), [&](const QTreeWidgetItem* item) {
+            if (item->checkState(0) != Qt::Checked) {
+                state.hiddenBatches.push_back(item->data(0, kVisibilityIdRole).toString());
+            }
+        });
     }
     state.selection.assign(selection_.begin(), selection_.end());
     return state;
@@ -929,13 +1210,24 @@ void MainWindow::saveCheckpoint() {
 void MainWindow::appendDiagnostics(
     const std::vector<skewer::core::Diagnostic>& diagnostics,
     const bool clearFirst) {
-    if (clearFirst) diagnosticsView_->clear();
-    for (const auto& diagnostic : diagnostics) {
+    if (clearFirst) generalDiagnostics_.clear();
+    generalDiagnostics_.insert(generalDiagnostics_.end(), diagnostics.begin(), diagnostics.end());
+    renderDiagnostics();
+}
+
+void MainWindow::renderDiagnostics() {
+    diagnosticsView_->clear();
+    const auto append = [this](const std::vector<skewer::core::Diagnostic>& diagnostics) {
+      for (const auto& diagnostic : diagnostics) {
         auto line = QStringLiteral("%1: %2")
             .arg(severityName(diagnostic.severity), QString::fromStdString(diagnostic.message));
         if (!diagnostic.path.empty()) line += QStringLiteral(" [%1]").arg(QString::fromStdWString(diagnostic.path.wstring()));
         diagnosticsView_->appendPlainText(line);
-    }
+      }
+    };
+    append(generalDiagnostics_);
+    append(alxLoadDiagnostics_);
+    append(alxFieldDiagnostics_);
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {

@@ -74,12 +74,37 @@ void appendTriangle(std::vector<RenderVertex>& vertices,
     }
 }
 
+[[nodiscard]] Color contextColor(const skewer::core::ContextObjectKind kind) {
+    switch (kind) {
+    case skewer::core::ContextObjectKind::Wall:
+        return { 0.38F, 0.43F, 0.50F, 0.38F };
+    case skewer::core::ContextObjectKind::WallUv:
+        return { 0.32F, 0.48F, 0.58F, 0.38F };
+    case skewer::core::ContextObjectKind::DoorWall:
+        return { 0.62F, 0.45F, 0.25F, 0.48F };
+    }
+    return { 0.45F, 0.45F, 0.45F, 0.38F };
+}
+
+void appendContextVertices(std::vector<RenderVertex>& vertices,
+    const skewer::core::SceneContextBatch& batch) {
+    const auto color = contextColor(batch.kind);
+    vertices.reserve(vertices.size() + batch.vertices.size());
+    for (const auto& vertex : batch.vertices) {
+        vertices.push_back({
+            vertex.position.x, vertex.position.y, vertex.position.z,
+            vertex.normal.x, vertex.normal.y, vertex.normal.z,
+            color.r, color.g, color.b, color.a,
+        });
+    }
+}
+
 } // namespace
 
 void SceneAdapter::setScene(const skewer::core::SceneModel* scene) {
     scene_ = scene;
     selection_.clear();
-    visibility_.assign(scene_ == nullptr ? 0U : scene_->batches.size(), 1U);
+    visibility_.assign(scene_ == nullptr ? 0U : scene_->batches.size() + scene_->contextBatches.size(), 1U);
     rebuildScene();
     rebuildSelection();
 }
@@ -128,7 +153,7 @@ const std::vector<std::uint8_t>& SceneAdapter::visibility() const noexcept {
 void SceneAdapter::rebuildScene() {
     sceneGeometry_.clear();
     if (scene_ == nullptr) return;
-    sceneGeometry_.reserve(scene_->batches.size());
+    sceneGeometry_.reserve(scene_->batches.size() + scene_->contextBatches.size());
     for (const auto& batch : scene_->batches) {
         std::vector<RenderVertex> vertices{};
         vertices.reserve(batch.triangleIndices.size() * 3U);
@@ -137,6 +162,14 @@ void SceneAdapter::rebuildScene() {
             const auto paletteIndex = triangle.selector <= 8U ? triangle.selector : 9U;
             appendTriangle(vertices, triangle, kPalette[paletteIndex]);
         }
+        auto geometry = std::make_unique<SelectorGeometry>();
+        geometry->setTriangles(vertices);
+        QQmlEngine::setObjectOwnership(geometry.get(), QQmlEngine::CppOwnership);
+        sceneGeometry_.push_back(std::move(geometry));
+    }
+    for (const auto& batch : scene_->contextBatches) {
+        std::vector<RenderVertex> vertices{};
+        appendContextVertices(vertices, batch);
         auto geometry = std::make_unique<SelectorGeometry>();
         geometry->setTriangles(vertices);
         QQmlEngine::setObjectOwnership(geometry.get(), QQmlEngine::CppOwnership);
