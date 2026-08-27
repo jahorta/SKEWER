@@ -24,16 +24,21 @@
   </ImportGroup>
   <PropertyGroup><OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir><IntDir>$(SolutionDir)obj\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir></PropertyGroup>
   <ItemGroup>
+    <ClCompile Include="ExportService.cpp" />
     <ClCompile Include="FieldDiscovery.cpp" />
+    <ClCompile Include="FieldDocument.cpp" />
     <ClCompile Include="FieldLoader.cpp" />
+    <ClCompile Include="FieldPatch.cpp" />
     <ClCompile Include="SceneModel.cpp" />
     <ClCompile Include="TrianglePicker.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Diagnostics.h" />
+    <ClInclude Include="ExportService.h" />
     <ClInclude Include="FieldDiscovery.h" />
     <ClInclude Include="FieldDocument.h" />
     <ClInclude Include="FieldLoader.h" />
+    <ClInclude Include="FieldPatch.h" />
     <ClInclude Include="SceneModel.h" />
     <ClInclude Include="TriangleKeys.h" />
     <ClInclude Include="TrianglePicker.h" />

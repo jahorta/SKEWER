@@ -1,6 +1,6 @@
 # SKEWER Implementation Roadmap
 
-Status: first import-and-viewing slice implemented; editing stages remain planned
+Status: ordinary Dreamcast import, viewing, editing, patch persistence, and verified export implemented
 Last reviewed: 2026-08-27
 
 ## Delivery strategy
@@ -21,9 +21,24 @@ The initial executable combines the non-editing portions of Stages 0 through 2 i
 - transformed GRND/GOBJ scene extraction, selector coloring, resource visibility, stable distinct key styles, and exact CPU BVH selection;
 - left-side selection/metadata inspection, right-side read-only ECT inspection, and explicit jump-to-table navigation;
 - executable-local persistence for the most recent root, active field, camera, table, visibility, expert display, and selection;
-- deterministic unit coverage and optional real-corpus integration tests for five ordinary Dreamcast pairs: mixed GRND/GOBJ fields `A020B`, `A101B`, and `A106A`; GOBJ-only `A116E`; and GRND-only `A109D`. Current imports produce respectively 144, 401, 516, 71, and 794 selectable scene triangles while preserving the eight-table ECT contract.
+- deterministic unit coverage and optional real-corpus integration tests for all 25 ordinary Dreamcast ECT/MLD pairs currently present in the reference FIELD corpus, totaling 25,692 selectable scene triangles while preserving the eight-table ECT contract. The corpus covers mixed GRND/GOBJ, GRND-only, and GOBJ-only fields; A099A remains deferred.
 
 This slice deliberately does not create semantic patch files or mutable working copies. Stage 3 begins the editing/persistence contract. Full directory-wide MLD platform probing also remains deferred: current discovery can identify compressed GameCube ECT datasets immediately, while an MLD is authoritatively classified when its pair is selected.
+
+## Implemented ordinary authoring slice (2026-08-27)
+
+The second slice completes the basic non-ALX ordinary-field editing path across Stages 3, 4, and 6:
+
+- one mutable `FieldDocument` working model for selector overlays and full-width ECT edits, with transaction-level undo/redo and warning-only suspicious ECT totals/ranges;
+- selector assignment for `0` through `8` over one or many selected GRND/GOBJ triangles, live recoloring, and strict rejection of selector `9`;
+- editable stage, overall encounter rate, encounter IDs, and weights for eight fixed 32-row tables;
+- deterministic per-field semantic JSON patches governed by the checked-in version 1 schema, atomically checkpointed after edits, on field changes, and at orderly shutdown;
+- patch restore with already-applied classification, current-source conflict preservation, and explicit rebasing for uniquely resolved keys;
+- hidden fresh-source export preflight, SPICE MLD patch planning and ECT serialization, candidate reparsing, selected-batch staging/rollback, changed-only output, overwrite confirmation, and SHA-256 export receipts;
+- workspace transition choices to export-and-archive, archive without export, explicitly discard, or cancel;
+- focused editing/schema/store tests plus combined MLD/ECT import-edit-export-reload validation across all 25 ordinary reference pairs. A separate deterministic-random A111C selector-only test patches one triangle, reloads the emitted MLD, resolves the same GRND/GOBJ semantic key, and verifies the requested selector.
+
+ALX enrichment, Area 99, GameCube, lasso/brush selection, and general packed metadata editing remain deferred.
 
 ## Stage 0: solution bootstrap
 

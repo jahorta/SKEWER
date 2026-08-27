@@ -19,6 +19,7 @@ public:
     SceneAdapter() = default;
 
     void setScene(const skewer::core::SceneModel* scene);
+    void refreshScene();
     void setVisibility(std::vector<std::uint8_t> visibleBatches);
     void setSelection(const std::set<skewer::core::TriangleKey, skewer::core::TriangleKeyLess>& selection);
 

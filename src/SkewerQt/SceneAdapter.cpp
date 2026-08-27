@@ -84,6 +84,11 @@ void SceneAdapter::setScene(const skewer::core::SceneModel* scene) {
     rebuildSelection();
 }
 
+void SceneAdapter::refreshScene() {
+    rebuildScene();
+    rebuildSelection();
+}
+
 void SceneAdapter::setVisibility(std::vector<std::uint8_t> visibleBatches) {
     visibility_ = std::move(visibleBatches);
 }

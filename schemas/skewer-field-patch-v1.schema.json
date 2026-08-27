@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jahorta/SKEWER/schemas/skewer-field-patch-v1.schema.json",
+  "title": "SKEWER ordinary Dreamcast field patch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "field", "mld", "ect"],
+  "properties": {
+    "format": { "const": "skewer-field-patch" },
+    "version": { "const": 1 },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stem", "platform", "ectFile", "mldFile"],
+      "properties": {
+        "stem": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "platform": { "const": "dreamcast" },
+        "ectFile": { "type": "string", "pattern": "^[a-z0-9_]+\\.ect$" },
+        "mldFile": { "type": "string", "pattern": "^[a-z0-9_]+\\.mld$" }
+      }
+    },
+    "mld": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["triangleSelectorEdits"],
+      "properties": {
+        "triangleSelectorEdits": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/triangleSelectorEdit" }
+        }
+      }
+    },
+    "ect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valueEdits"],
+      "properties": {
+        "valueEdits": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ectValueEdit" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "triangleSelectorEdit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "expectedSelector", "selector"],
+      "properties": {
+        "key": { "oneOf": [{ "$ref": "#/$defs/grndKey" }, { "$ref": "#/$defs/gobjKey" }] },
+        "expectedSelector": { "type": "integer", "minimum": 0, "maximum": 8 },
+        "selector": { "type": "integer", "minimum": 0, "maximum": 8 }
+      }
+    },
+    "grndKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "resourceAddress", "triangleIndex"],
+      "properties": {
+        "kind": { "const": "grnd" },
+        "resourceAddress": { "type": "string", "pattern": "^0x[0-9a-f]{8}$" },
+        "triangleIndex": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "gobjKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "resourceAddress", "nodeIndex", "triangleIndex"],
+      "properties": {
+        "kind": { "const": "gobj" },
+        "resourceAddress": { "type": "string", "pattern": "^0x[0-9a-f]{8}$" },
+        "nodeIndex": { "type": "integer", "minimum": 0 },
+        "triangleIndex": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "ectValueEdit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["table", "kind", "expected", "value"],
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "enum": ["encounterId", "weight"] } } },
+          "then": { "required": ["row"] },
+          "else": { "not": { "required": ["row"] } }
+        }
+      ],
+      "properties": {
+        "table": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "kind": { "enum": ["stage", "overallEncounterRate", "encounterId", "weight"] },
+        "row": { "type": "integer", "minimum": 0, "maximum": 31 },
+        "expected": { "type": "integer", "minimum": 0, "maximum": 65535 },
+        "value": { "type": "integer", "minimum": 0, "maximum": 65535 }
+      }
+    }
+  }
+}

@@ -98,12 +98,14 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
         return std::nullopt;
     }
     const auto root = document.object();
-    if (root.value(QStringLiteral("schema_version")).toInt() != 1) {
+    const auto schemaVersion = root.value(QStringLiteral("schema_version")).toInt();
+    if (schemaVersion != 1 && schemaVersion != 2) {
         error_ = QStringLiteral("Unsupported workspace schema version.");
         return std::nullopt;
     }
     WorkspaceState state{};
     state.gameDataRoot = root.value(QStringLiteral("game_data_root")).toString();
+    if (schemaVersion >= 2) state.fieldDirectory = root.value(QStringLiteral("field_directory")).toString();
     state.activeField = root.value(QStringLiteral("active_field")).toString();
     state.encounterTable = root.value(QStringLiteral("encounter_table")).toInt();
     state.expertMetadata = root.value(QStringLiteral("expert_metadata")).toBool();
@@ -141,8 +143,9 @@ bool WorkspaceStateStore::save(const WorkspaceState& state) {
     for (const auto& key : state.selection) selection.push_back(keyToJson(key));
 
     QJsonObject root{};
-    root.insert(QStringLiteral("schema_version"), 1);
+    root.insert(QStringLiteral("schema_version"), 2);
     root.insert(QStringLiteral("game_data_root"), state.gameDataRoot);
+    root.insert(QStringLiteral("field_directory"), state.fieldDirectory);
     root.insert(QStringLiteral("active_field"), state.activeField);
     root.insert(QStringLiteral("encounter_table"), state.encounterTable);
     root.insert(QStringLiteral("expert_metadata"), state.expertMetadata);

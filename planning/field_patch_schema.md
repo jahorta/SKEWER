@@ -1,6 +1,6 @@
 # Per-Field Patch Schema and Export-Preflight Contract
 
-Status: initial schema and lifecycle decisions; detailed schema drafting remains
+Status: version 1 schema and ordinary-field lifecycle implemented
 Last reviewed: 2026-08-27
 
 ## Purpose
@@ -102,11 +102,11 @@ Illustrative version 1 shape:
 }
 ```
 
-The example is illustrative rather than the final checked-in JSON Schema. Exact address encoding and forward-compatibility rules still require implementation-level drafting.
+The checked-in canonical contract is `schemas/skewer-field-patch-v1.schema.json`. The implementation uses the same semantic content, with ECT changes serialized canonically as sparse `valueEdits` keyed by table, value kind, and row where applicable.
 
 ## Schema invariants
 
-The eventual version 1 schema should require:
+Version 1 requires:
 
 - exact top-level format identifier and integer schema version;
 - lowercase normalized field stem and source basenames, with no arbitrary source paths inside a field patch;
@@ -184,3 +184,7 @@ The SKEWER patch schema is an application-level semantic contract. It does not d
 - Multi-field export publication is atomic across the selection.
 - Empty patches are removed automatically.
 - Expected-value conflict resolution updates the current patch before export rather than adding an export-time approval step.
+
+## Implemented authoring lifecycle (2026-08-27)
+
+The ordinary Dreamcast authoring loop now implements deterministic patch serialization and parsing, executable-local atomic checkpoints, conflict-preserving restore, explicit resolvable-conflict rebasing, multi-field selection, hidden fresh-source preflight, SPICE-backed candidate production and reparsing, changed-only transactional publication, and separate export receipts with SHA-256 source/output hashes. Selector `9` is rejected by the schema and codec as malformed data; a loaded field containing it remains viewable but read-only.

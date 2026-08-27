@@ -4,6 +4,7 @@
 #include "SPICE/SpiceEct/EctParser.h"
 #include "SPICE/SpiceMLD/Parsing/MldParser.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iterator>
 #include <span>
@@ -128,8 +129,17 @@ FieldLoadResult FieldLoader::load(const FieldAssetPair& assets) {
     document.assets = assets;
     document.mld = std::move(mld);
     document.ect = std::move(*ectResult.file);
+    document.workingEct = document.ect;
     document.scene = std::move(scene);
     document.diagnostics = result.diagnostics;
+    const auto malformed = std::find_if(document.scene.triangles.begin(), document.scene.triangles.end(),
+        [](const SceneTriangle& triangle) { return triangle.selector > 8U; });
+    if (malformed != document.scene.triangles.end()) {
+        document.readOnly = true;
+        document.readOnlyReason = "The field contains malformed encounter selector metadata and is read-only.";
+        document.diagnostics.push_back({ DiagnosticSeverity::Error,
+            "Encounter selector 9 or missing selector metadata was found. The field was opened read-only.", assets.mldPath });
+    }
     result.document = std::move(document);
     return result;
 }

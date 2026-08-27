@@ -1,5 +1,6 @@
 #include "SkewerCore/FieldDiscovery.h"
 #include "SkewerCore/FieldLoader.h"
+#include "RealCorpus.h"
 
 #include <gtest/gtest.h>
 
@@ -115,7 +116,7 @@ TEST_P(DreamcastFieldImportTest, LoadsOrdinaryEctMldPairWhenCorpusIsPresent) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    RepresentativeFields,
+    ExtendedOrdinaryFields,
     DreamcastFieldImportTest,
-    ::testing::Values("A020B", "A101B", "A106A", "A116E", "A109D"),
+    ::testing::ValuesIn(skewer::tests::kOrdinaryDreamcastFieldStems),
     [](const ::testing::TestParamInfo<const char*>& info) { return std::string(info.param); });
