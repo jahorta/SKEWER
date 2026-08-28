@@ -31,16 +31,36 @@
   <ItemDefinitionGroup><Link><SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation></Link></ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="MainWindow.cpp" />
-    <ClCompile Include="SceneAdapter.cpp" />
-    <ClCompile Include="SelectorGeometry.cpp" />
-    <ClCompile Include="WorkspaceStateStore.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Session\FieldSessionController.cpp" />
+    <ClCompile Include="Session\WorkspaceController.cpp" />
+    <ClCompile Include="Session\WorkspaceStateStore.cpp" />
+    <ClCompile Include="Viewport\SceneAdapter.cpp" />
+    <ClCompile Include="Viewport\SelectorGeometry.cpp" />
+    <ClCompile Include="Viewport\ViewportController.cpp" />
+    <ClCompile Include="Viewport\ViewportWidget.cpp" />
+    <ClCompile Include="Widgets\DiagnosticsWidget.cpp" />
+    <ClCompile Include="Widgets\EncounterEditorWidget.cpp" />
+    <ClCompile Include="Widgets\FieldSceneWidget.cpp" />
+    <ClCompile Include="Widgets\FormationInspectorWidget.cpp" />
+    <ClCompile Include="Widgets\GroundMetadataWidget.cpp" />
+    <ClCompile Include="Widgets\TriangleInspectorWidget.cpp" />
     <QtMoc Include="MainWindow.h" />
+    <QtMoc Include="Session\FieldSessionController.h" />
+    <QtMoc Include="Session\WorkspaceController.h" />
+    <QtMoc Include="Viewport\ViewportController.h" />
+    <QtMoc Include="Viewport\ViewportWidget.h" />
+    <QtMoc Include="Widgets\EncounterEditorWidget.h" />
+    <QtMoc Include="Widgets\FieldSceneWidget.h" />
+    <QtMoc Include="Widgets\TriangleInspectorWidget.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="SceneAdapter.h" />
-    <ClInclude Include="SelectorGeometry.h" />
-    <ClInclude Include="WorkspaceStateStore.h" />
+    <ClInclude Include="Session\WorkspaceStateStore.h" />
+    <ClInclude Include="Viewport\SceneAdapter.h" />
+    <ClInclude Include="Viewport\SelectorGeometry.h" />
+    <ClInclude Include="Widgets\DiagnosticsWidget.h" />
+    <ClInclude Include="Widgets\FormationInspectorWidget.h" />
+    <ClInclude Include="Widgets\GroundMetadataWidget.h" />
   </ItemGroup>
   <ItemGroup><QtRcc Include="SkewerQt.qrc" /></ItemGroup>
   <ItemGroup><None Include="Qml\ViewerScene.qml" /></ItemGroup>

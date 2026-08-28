@@ -1,7 +1,7 @@
 # SKEWER Implementation Roadmap
 
 Status: ordinary Dreamcast import, viewing, editing, patch persistence, and verified export implemented
-Last reviewed: 2026-08-27
+Last reviewed: 2026-08-28
 
 ## Delivery strategy
 
@@ -39,6 +39,29 @@ The second slice completes the basic non-ALX ordinary-field editing path across 
 - focused editing/schema/store tests plus combined MLD/ECT import-edit-export-reload validation across all 25 ordinary reference pairs. A separate deterministic-random A111C selector-only test patches one triangle, reloads the emitted MLD, resolves the same GRND/GOBJ semantic key, and verifies the requested selector.
 
 ALX enrichment, Area 99, GameCube, lasso/brush selection, and general packed metadata editing remain deferred.
+
+## Qt UI decomposition (implemented and manually verified)
+
+The Qt layer is decomposed according to the ownership rules in [Solution and Application Architecture](solution_and_application_architecture.md#qt-shell-and-feature-widget-ownership). Dock contents are feature widgets; viewport/QML integration, asynchronous field and ALX work, document lifetime, and workspace patch/checkpoint state are owned by dedicated controllers. `MainWindow` remains the shell for docks, menus, dialogs, status presentation, export confirmation, and high-level wiring.
+
+Implementation status:
+
+1. `FieldSceneWidget`, `EncounterEditorWidget`, `FormationInspectorWidget`, and `DiagnosticsWidget` extraction is implemented and was manually verified on 2026-08-28.
+2. Feature-widget semantic APIs, private control ownership, presentation logic, and local signal suppression are implemented and were manually verified on 2026-08-28.
+3. `ViewportWidget` owns the `QQuickWidget` and QML property plumbing; `ViewportController` is the direct QML backend and owns scene adaptation, exact picking, visibility, and selection. Implemented and manually verified on 2026-08-28.
+4. `FieldSessionController` owns asynchronous field/ALX work, catalog/document/enrichment state, and semantic edits. `WorkspaceController` owns checkpoint timing, workspace state, patch restoration, conflicts, and transitions. Implemented and manually verified on 2026-08-28.
+5. Stable dock object names and versioned main-window geometry/dock-state persistence are implemented and manually verified on 2026-08-28. Dedicated Qt item models remain deferred because the private item widgets do not yet need reuse, filtering, or independent model testing.
+
+The decomposition does not intentionally change field loading, editing semantics, selection behavior, patch persistence, export behavior, ALX joins, or QML rendering contracts. Persisted main-window geometry and dock arrangement are the only intentional user-visible addition.
+
+Acceptance:
+
+- `MainWindow` owns feature-widget pointers and application actions instead of the individual controls inside each dock.
+- `MainWindow` remains the sole owner of dock wrappers and their placement, while feature widgets remain independently constructible ordinary `QWidget` classes.
+- Feature widgets use semantic setters/getters and signals; callers do not reach through them to manipulate item widgets or editors.
+- Programmatic refresh in one feature widget cannot suppress signals in another through a shared global population flag.
+- UI-originated selector and ECT edits continue through `FieldDocument` semantic operations and retain existing undo, diagnostics, checkpoint, and export behavior.
+- Compiled changes receive the required elevated Debug solution build and existing core test suite. GUI behavior, including controller/widget integration and dock-layout restoration, is verified manually rather than through an automated Qt GUI test project.
 
 ## Stage 0: solution bootstrap
 
@@ -111,7 +134,7 @@ Scope:
 - Selection overlay and left-side selected-triangle inspector.
 - Single-click replacement, Ctrl-click toggle, and Shift-click additive selection.
 - Deferred box/lasso and brush-painting interactions.
-- All decoded GRND/GOBJ blocks visible by default, with every triangle colored by its active working selector including selector `0`.
+- All decoded GRND/GOBJ blocks visible in the raw initial view, with every triangle colored by its active working selector including selector `0`; runtime-state visibility applies only after explicit preset selection.
 - Selector-only inspector by default and opt-in expert metadata/provenance display.
 
 Acceptance:
@@ -129,6 +152,34 @@ Context extension:
 - Render bind-pose geometry in a separate untextured, non-editable layer with type-level visibility controls.
 - Preserve GRND/GOBJ picking and patch identities; context geometry is presentation-only.
 - Frame the combined encounter and context bounds.
+
+### Planned event-ground grouping and SCT preset extension
+
+Preserve the runtime relationship between MLD entry lists and script-selected field states without turning visibility into authored binary changes.
+
+Scope:
+
+- Preserve each `groundAddresses` ordinal and each ground/object reference role during scene construction.
+- Build event-ground groups keyed by MLD identity and entry table index, retaining entry ID and signed `tblId`; allow GRND-only, GOBJ-only, and mixed GRND/GOBJ variant lists.
+- Keep ordinary `objectAddresses` GOBJs outside opcode-114 groups, even when the same physical resource also has a separate `groundAddresses` role.
+- Treat a GOBJ variant as one logical resource whose selection enables all of its rendered node batches.
+- Discover the optional case-insensitive paired SCT, using `ME<field-without-leading-A>.SCT`, and parse it through `SpiceSCT` without making SCT availability a prerequisite for ordinary field editing.
+- Evaluate opcode-114 operands and section control flow into named visibility presets, beginning from loader-default ordinal `0` and applying mutations in control-flow order.
+- Diagnose duplicate `tblId` targets, invalid ordinals, ambiguous SCT pairing, and unsupported control flow instead of guessing, wrapping, or selecting by resource tag.
+- Persist only the selected preset and resulting resource visibility in workspace/session state. Do not add event-ground state to field patch documents or export content.
+
+Acceptance:
+
+- A103B GRND groups select ordinals `0` and `1`, and opcode-114 operand `-1` produces `Disabled`.
+- A111C `tblId` 4 switches between GOBJ `0x0001B700` at ordinal `0` and GOBJ `0x0001B920` at ordinal `1`.
+- A111C `tblId` 13 switches between GOBJ `0x0001EF80` at ordinal `0` and GOBJ `0x0001F260` at ordinal `1`.
+- Selecting either A111C GOBJ variant enables every rendered node batch owned by that GOBJ as one logical resource.
+- The researched A115B mixed list can switch among GRND and GOBJ ordinals without creating separate kind-based namespaces.
+- A GOBJ referenced only through `objectAddresses` is unaffected by opcode-114 grouping.
+- Different MLD entries that share one physical resource address remain independently controllable.
+- A missing paired SCT retains raw all-resource browsing and ordinary MLD/ECT editing, with no named presets.
+- Out-of-range ordinals and ambiguous duplicate `tblId` targets produce diagnostics rather than inferred selections.
+- Applying a preset never creates a field-patch edit, mutates a source asset, or changes export output.
 
 ## Stage 3: selector editing and undo
 

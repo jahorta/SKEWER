@@ -39,6 +39,7 @@ spice::mld::model::BlenderIrMesh contextTriangleMesh() {
         BlenderIrCorner{ .vertexIndex = 1U },
         BlenderIrCorner{ .vertexIndex = 2U },
     };
+    mesh.materials.push_back(BlenderIrMaterial{ .doubleSided = false });
     mesh.triangleSets.push_back(std::move(triangles));
     return mesh;
 }
@@ -156,6 +157,25 @@ TEST(SceneModel, ProjectsOnlySupportedContextHandlersThroughEntryAndNodeTransfor
     EXPECT_FLOAT_EQ(context.batches[1].vertices[0].position.x, 22.0F);
     EXPECT_FLOAT_EQ(context.batches[2].vertices[0].position.x, 32.0F);
     EXPECT_TRUE(context.bounds.valid);
+}
+
+TEST(SceneModel, PreservesContextMaterialSidednessPerTriangleSet) {
+    spice::mld::model::BlenderIrScene source{};
+    auto mesh = contextTriangleMesh();
+    mesh.materials.push_back(spice::mld::model::BlenderIrMaterial{ .doubleSided = true });
+    auto doubleSidedTriangles = mesh.triangleSets.front();
+    doubleSidedTriangles.materialIndex = 1U;
+    mesh.triangleSets.push_back(std::move(doubleSidedTriangles));
+    source.meshes.push_back(std::move(mesh));
+    source.objectTrees.push_back(contextTree());
+    source.indexEntries.push_back(contextInstance("wall", 1U));
+
+    std::vector<skewer::core::Diagnostic> diagnostics{};
+    const auto context = skewer::core::buildContextGeometry(source, diagnostics);
+    ASSERT_EQ(context.batches.size(), 1U);
+    ASSERT_EQ(context.batches[0].triangleDoubleSided.size(), 2U);
+    EXPECT_EQ(context.batches[0].triangleDoubleSided[0], 0U);
+    EXPECT_EQ(context.batches[0].triangleDoubleSided[1], 1U);
 }
 
 TEST(SceneModel, PlacesWeightedContextMeshAtBindRootAndKeepsRepeatedInstances) {

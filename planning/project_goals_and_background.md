@@ -1,7 +1,7 @@
 # SKEWER Project Goals and Background
 
 Status: initial project charter and research baseline  
-Last reviewed: 2026-08-27
+Last reviewed: 2026-08-28
 
 ## Project goal
 
@@ -55,6 +55,16 @@ For the validated Catacombs assets (`a106a.mld` and `a106c.mld`), the authored s
 The runtime collision query finds the current triangle, decodes its packed metadata, and publishes the decoded encounter selector for the encounter system. The current evidence strongly supports this convention, but the research recommends spot-checking another dungeon before claiming universal coverage for every field in the game.
 
 Initial SKEWER authoring uses the complete ordinary format range: `0` means no encounters and `1` through `8` select the eight physical ECT tables in order. The Catacombs evidence happens to exercise only table IDs `1` through `7`; it does not redefine the eighth physical table as selector `0`.
+
+### Event-ground resource variants
+
+**Evidence (static GameCube-US binary and corpus):** each MLD entry has a `groundAddresses` list whose elements may decode as either GRND or GOBJ resources. The runtime event-ground descriptor builder accepts both resource kinds. Opcode 114 first resolves an entry by signed `tblId`, then selects one zero-based `groundAddresses` ordinal without inspecting the selected resource tag. The loader initially selects ordinal `0`; a selector value of `-1` clears the entry's active descriptor and disables the group. GRND-only, GOBJ-only, and mixed GRND/GOBJ lists therefore use one mutually exclusive ordinal namespace.
+
+This mechanism is specific to `groundAddresses`. A GOBJ referenced only through `objectAddresses` remains an ordinary object reference and is not controlled by opcode 114. If one physical resource is referenced through both lists, those references retain distinct roles rather than collapsing into one activation rule.
+
+The corpus includes GRND variant pairs in A103B and clear GOBJ-only groups in A111C. A111C `tblId` 4 switches between GOBJ resources at `0x0001B700` and `0x0001B920`; `tblId` 13 switches between `0x0001EF80` and `0x0001F260`. Mixed lists also occur, including the researched A115B entry whose ordinals alternate between GRND and GOBJ resources.
+
+**Decision:** SKEWER uses this model to present event-ground groups and script-derived field-state presets for ordinary Dreamcast fields. That cross-platform application is a product design decision pending Dreamcast runtime confirmation, not a claim that the GameCube runtime evidence directly proves Dreamcast behavior. Preset selection affects presentation/session state only and does not edit the MLD, SCT, triangle selectors, or export content.
 
 ### Area 99 / overworld selection
 
@@ -158,7 +168,9 @@ Native SPICE ownership remains authoritative for ECT and MLD data. ALX-derived d
 - Reject the entire FIELD directory as corrupted if any ECT or MLD is malformed enough that its platform cannot be determined.
 - Resolve and load the matching MLD/ECT pair and optional ALX context for the selected field.
 - Render decoded GRND and GOBJ triangles in a navigable 3D viewport.
-- Display all decoded GRND and GOBJ blocks by default and color every triangle by its active working selector, including the no-encounter selector `0`.
+- Display all decoded GRND and GOBJ blocks in the raw initial view and color every triangle by its active working selector, including the no-encounter selector `0`; an explicitly selected runtime-state preset may then apply mutually exclusive event-ground visibility.
+- Group `groundAddresses` resources by owning MLD entry while preserving their zero-based ordinals and decoded GRND/GOBJ kinds; keep ordinary `objectAddresses` GOBJs outside those groups.
+- Discover an optional paired SCT for an ordinary field and expose script-derived named visibility presets when it can be resolved and parsed. Missing SCT data must leave raw MLD/ECT browsing and editing available without presets.
 - Render exact `wall`, `walluv`, and `doorwall` entries from their referenced Ninja object resources as a separate non-editable context layer. Use authored bind-pose transforms only; do not evaluate motions, textures, or materials.
 - Provide separate visibility groups for editable encounter surfaces and field context, with context controls for Wall, WallUV, and Doorwall. Combined scene bounds drive initial framing.
 - Support single-click selection, Ctrl-click toggle, Shift-click additive selection, visibility controls, and coloring by authored selector. Box/lasso selection and brush painting are deferred.
@@ -226,6 +238,11 @@ Primary SoAInvestigate references:
 - `D:\SoAInvestigate\Analyses\formula_catalog.md` (`ENC-001` through `ENC-006`).
 - `D:\SoAInvestigate\Analyses\20260715_1113_dungeon_encounter_grnd\20260715_1143_dungeon_encounter_grnd_summary.txt`.
 - `D:\SoAInvestigate\Analyses\20260715_1051_encounter_grnd_correlation\20260715_1101_encounter_grnd_correlation_summary.txt`.
+- `D:\SoAInvestigate\Analyses\20260828_0726_ground_variants\20260828_0900_ground_variants_summary.txt`.
+- `D:\SoAInvestigate\Analyses\20260828_0726_ground_variants\20260828_0802_cross_entry_default_ground_summary.txt`.
+- `D:\SoAInvestigate\Analyses\20260828_0726_ground_variants\20260828_0824_gobj_activation_summary.txt`.
+- `D:\SoAInvestigate\Analyses\20260828_0726_ground_variants\a103b_ground_variant_rule.tsv`.
+- `D:\SoAInvestigate\Analyses\20260828_0726_ground_variants\multi_resource_gobj_ground_entries.tsv`, `gobj_ground_opcode114_calls.tsv`, and `gobj_variant_bbox_overlap.tsv`.
 - `D:\SoAInvestigate\Analyses\overworld_rng_investigation.txt`.
 
 Primary SPICE references:

@@ -1,7 +1,7 @@
 # SKEWER Solution and Application Architecture
 
-Status: initial architecture baseline
-Last reviewed: 2026-08-27
+Status: active architecture baseline
+Last reviewed: 2026-08-28
 
 ## Architectural goals
 
@@ -36,6 +36,7 @@ SkewerQt ---------+
                   v
 SkewerTests --> SkewerCore --> SpiceMLD
                             --> SpiceEct
+                            --> SpiceSCT
                             `-> SpiceTrade
 ```
 
@@ -92,17 +93,62 @@ The selected-triangle inspector belongs on the left with the MLD resource tree. 
 
 QML owns camera manipulation, scene presentation, and pointer gesture capture. C++ owns field state, scene conversion, exact selection, edits, and view models. `MainWindow` coordinates these components but should not become their implementation.
 
-Suggested Qt-side components are:
+### Qt shell and feature-widget ownership
 
-- `MainWindow`: menus, docks, application commands, and persisted window state.
-- `FieldSessionController`: asynchronous open/close and document lifetime.
-- `SceneAdapter`: converts core geometry and display attributes into render batches.
-- `ViewportController`: camera-facing commands, ray requests, hover, and selection.
-- `ResourceTreeModel`: GRND/GOBJ resources and visibility.
-- `TriangleInspectorModel`: selector editing for the current selection, with raw/decoded provenance hidden unless expert metadata is enabled.
-- `EncounterTableModel`: ECT tables and ordered encounter rows.
-- `FormationModel`: joined `enemyencounter` and `enemy` display data.
-- `DiagnosticsModel` and `ExportPreviewModel`.
+**Decision:** `MainWindow` is a thin application shell. It owns menus, application-level actions, status-bar presentation, modal workflow dialogs, `QDockWidget` creation and placement, stable dock `objectName` values, window-level layout persistence, and the high-level signal connections between feature widgets and controllers. It must not remain the implementation site for the controls and presentation logic inside each dock.
+
+Dock contents are ordinary feature-level `QWidget` classes rather than `QDockWidget` subclasses. `MainWindow` retains the dock wrappers because allowed areas, splitting, tabification, toggle actions, and `QMainWindow::saveState`/`restoreState` are shell concerns. Each feature widget owns its child controls, local presentation state, and programmatic-update suppression.
+
+Feature widgets expose semantic setters, getters, and signals. They do not expose internal `QComboBox`, `QTreeWidget`, `QTableWidget`, or editor pointers to `MainWindow`. User edits are emitted as intent, such as a field selection, visibility change, selector assignment, or keyed ECT value request. A controller or coordinating layer validates and applies that intent to `FieldDocument`, then supplies the resulting presentation state back to the widgets. UI classes must not bypass `SkewerCore` to mutate SPICE models directly.
+
+The feature widgets are:
+
+- `FieldSceneWidget`: field selection, GRND/GOBJ and field-context resource visibility, context opacity, selected-resource notification, and patch-conflict rebase affordance.
+- `TriangleInspectorWidget`: selected-triangle summary, selector choice, explicit jump-to-table and apply requests, and optional expert metadata.
+- `GroundMetadataWidget`: read-only presentation for the selected GRND resource's ground metadata.
+- `EncounterEditorWidget`: the eight-table selector, table header fields, ordered encounter rows, modified-value presentation, row selection, and keyed ECT edit requests.
+- `FormationInspectorWidget`: read-only ALX load state and the formation/enemy view for the selected ECT row.
+- `DiagnosticsWidget`: diagnostic formatting, severity presentation, and bounded diagnostic history.
+- `ViewportWidget`: `QQuickWidget` and QML loading, render/selection mesh properties, camera properties, context opacity, and QML load diagnostics.
+
+The coordinating components are:
+
+- `FieldSessionController`: asynchronous field discovery/loading and ALX loading, catalog and enrichment state, `FieldDocument` lifetime, semantic edits, undo/redo, and read-only session lookups used by the feature widgets.
+- `ViewportController`: camera-facing commands, ray requests, exact picking, visibility, selection, `SceneAdapter` ownership, and the QObject boundary presented directly to QML. `MainWindow` is not the QML backend.
+- `WorkspaceController`: checkpoint scheduling, UI/session-state restoration, field-patch lifecycle, conflict rebasing, and workspace archive/discard operations. Export remains an application command while delegating its preflight and publication work to the existing core services.
+- `SceneAdapter`: conversion of core geometry and display attributes into render batches.
+
+Dedicated `QAbstractItemModel` implementations such as `ResourceTreeModel`, `EncounterTableModel`, `FormationModel`, and `DiagnosticsModel` remain available when sorting, filtering, richer roles, reuse, or model-level testing justifies them. They are not a prerequisite for the first decomposition. Initially, the existing item widgets may remain as private implementation details behind the feature-widget APIs.
+
+A single `MainWindow`-wide population guard must not coordinate otherwise independent controls. Each feature widget should suppress only its own programmatic updates, normally with `QSignalBlocker` or a local scoped guard, so refreshing one dock cannot silently suppress events in another.
+
+The Qt source grouping is:
+
+```text
+src/SkewerQt/
+|  MainWindow.h/.cpp
+|
++- Widgets/
+|  +- FieldSceneWidget.h/.cpp
+|  +- TriangleInspectorWidget.h/.cpp
+|  +- GroundMetadataWidget.h/.cpp
+|  +- EncounterEditorWidget.h/.cpp
+|  +- FormationInspectorWidget.h/.cpp
+|  `- DiagnosticsWidget.h/.cpp
+|
++- Viewport/
+|  +- ViewportWidget.h/.cpp
+|  +- ViewportController.h/.cpp
+|  +- SceneAdapter.h/.cpp
+|  `- SelectorGeometry.h/.cpp
+|
+`- Session/
+   +- FieldSessionController.h/.cpp
+   +- WorkspaceController.h/.cpp
+   `- WorkspaceStateStore.h/.cpp
+```
+
+This organization is implemented. `MainWindow` retains window-level UI orchestration while domain/session ownership, patch lifecycle, and QML integration remain behind the controller boundaries above.
 
 The initial viewport selection contract is single click to replace the selection, Ctrl-click to toggle one triangle, and Shift-click to add one triangle. Box/lasso selection and brush painting are deferred. Selection is stable document state keyed by `TriangleKey`, not a transient QML highlight list.
 
@@ -124,11 +170,23 @@ Long-running parsing and scene conversion should use `QtConcurrent` and `QFuture
 
 Geometry should be batched by GRND resource or GOBJ node rather than represented by one QML `Model` per face. Expanded per-face vertices may be used where independent selector colors are needed. Render batches must retain a mapping back to stable core keys; render-array indices are never document identities.
 
-All decoded GRND and GOBJ blocks are visible by default. Every triangle is colored by its active working selector, including selector `0`; selector-zero geometry uses its own subdued palette entry rather than being hidden. Resource visibility controls can hide blocks explicitly.
+The initial raw view shows all decoded GRND and GOBJ blocks. Every triangle is colored by its active working selector, including selector `0`; selector-zero geometry uses its own subdued palette entry rather than being hidden. Resource visibility controls can hide blocks explicitly. A runtime-state preset changes this raw visibility only after the user selects one.
 
 The viewport has two independent render layers. **Encounter Surfaces** contains the selector-colored, pickable GRND/GOBJ batches and retains per-resource controls. **Field Context** contains only exact normalized `wall`, `walluv`, and `doorwall` entries, grouped by type. Context geometry is projected from SPICE's Sa3D Blender IR through entry and object-node transforms, including weighted bind-pose placement. The obsolete SPICE world model is not used.
 
-Context objects are untextured, unanimated, double-sided, and non-editable. Motion bindings and animation frame zero are ignored so authored node transforms remain the bind pose. Context batches do not receive `TriangleKey` values and are omitted from CPU picking and patch/export state. Both layers are visible by default and their combined bounds drive `Frame All`.
+Context objects are untextured, unanimated, and non-editable. Their source material sidedness is preserved: authored double-sided triangle sets disable culling while the remaining triangle sets use backface culling. Motion bindings and animation frame zero are ignored so authored node transforms remain the bind pose. Context batches do not receive `TriangleKey` values and are omitted from CPU picking and patch/export state. Both layers are visible by default, context opacity is adjustable, and their combined bounds drive `Frame All`.
+
+### Event-ground groups and state presets
+
+Scene Layers groups event-ground resources by their owning MLD entry and displays the entry's signed `tblId`. Within a group, each `groundAddresses` ordinal is one mutually exclusive variant labeled by zero-based ordinal and decoded kind, GRND or GOBJ. A selected GRND variant enables its GRND batch; a selected GOBJ variant enables all rendered node batches for that GOBJ address as one logical resource. Mixed lists may therefore switch between GRND and GOBJ variants.
+
+Ordinary GOBJ references from `objectAddresses` remain ordinary scene resources outside opcode-114 grouping. If the same physical GOBJ also appears in `groundAddresses`, the two reference roles remain distinct and are not merged into one visibility rule. Separate MLD entries also remain independently controllable when they share a resource address.
+
+Named SCT presets are a separate control from the resource-tree hierarchy because one variant may participate in multiple script states. Applying a preset atomically assigns every resolved event-ground group either `Disabled` or `Variant N`. Preset evaluation starts with the loader default of ordinal `0`, then applies opcode-114 mutations in section control-flow order; a group not mentioned by a mutation retains its previous or default state. A `-1` operand disables the resolved group.
+
+SKEWER initially retains the raw all-resources view until the user explicitly selects a preset. Missing optional SCT data leaves that raw browsing mode available without presets. Duplicate `tblId` targets, invalid ordinals, ambiguous SCT pairing, and unsupported control flow produce diagnostics rather than guessed visibility.
+
+`SpiceSCT` owns SCT parsing. SKEWER owns deterministic field-to-SCT pairing, opcode-114 interpretation, resolution to MLD entry groups, control-flow evaluation, diagnostics, and presentation. Preset selection and resulting visibility are UI/session state: they do not mutate MLD or SCT data, create triangle-selector edits, enter field patch documents, or alter export output.
 
 Initial display modes should include:
 
@@ -165,7 +223,7 @@ The persistence formats are versioned and semantic rather than copied mutable ga
 
 On startup or field selection, SKEWER reparses the current ECT/MLD pair and materializes the document by applying that field's patch semantically. Loading a patch for inspection does not require source size, timestamp, or hash equality. Patch entries carry expected semantic values, however, so conflicts can be diagnosed. A uniquely resolved mismatch may be explicitly rebased into the current patch; unresolved or ambiguous content must never be silently redirected.
 
-The workspace manifest may retain the game-data root, located FIELD identity, selected field, active ECT table, camera, resource visibility, and selected triangles. These UI details do not belong in the per-field patch documents. Only one FIELD workspace is active. Before replacing it with a different dataset, the session controller presents the complete patch set and requires export-and-archive, archive without export, confirmed discard, or cancel; merely selecting another field in the same workspace does not trigger an export prompt.
+The workspace manifest may retain the game-data root, located FIELD identity, selected field, active ECT table, camera, resource visibility, selected SCT preset, and selected triangles. These UI details do not belong in the per-field patch documents. Only one FIELD workspace is active. Before replacing it with a different dataset, the session controller presents the complete patch set and requires export-and-archive, archive without export, confirmed discard, or cancel; merely selecting another field in the same workspace does not trigger an export prompt.
 
 The patch schema and lifecycle are specified in [field_patch_schema.md](field_patch_schema.md).
 

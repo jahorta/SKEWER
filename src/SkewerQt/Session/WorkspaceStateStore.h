@@ -2,6 +2,7 @@
 
 #include "SkewerCore/TriangleKeys.h"
 
+#include <QByteArray>
 #include <QString>
 #include <QStringList>
 #include <QVector3D>
@@ -22,8 +23,11 @@ struct WorkspaceState {
     float orbitYaw = 0.0F;
     float orbitPitch = -20.0F;
     bool expertMetadata = false;
+    int contextOpacityPercent = 40;
     QStringList hiddenBatches{};
     std::vector<skewer::core::TriangleKey> selection{};
+    QByteArray mainWindowGeometry{};
+    QByteArray mainWindowState{};
 };
 
 class WorkspaceStateStore final {

@@ -72,6 +72,7 @@ struct SceneContextBatch {
     std::string visibilityId{};
     std::size_t sourceEntryCount = 0;
     std::vector<SceneContextVertex> vertices{};
+    std::vector<std::uint8_t> triangleDoubleSided{};
 
     [[nodiscard]] std::size_t triangleCount() const noexcept { return vertices.size() / 3U; }
 };

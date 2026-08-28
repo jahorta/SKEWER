@@ -8,6 +8,7 @@
 #include <QSaveFile>
 #include <QTemporaryFile>
 
+#include <algorithm>
 #include <variant>
 
 namespace skewer::qt {
@@ -99,7 +100,7 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
     }
     const auto root = document.object();
     const auto schemaVersion = root.value(QStringLiteral("schema_version")).toInt();
-    if (schemaVersion < 1 || schemaVersion > 3) {
+    if (schemaVersion < 1 || schemaVersion > 5) {
         error_ = QStringLiteral("Unsupported workspace schema version.");
         return std::nullopt;
     }
@@ -110,6 +111,10 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
     state.activeField = root.value(QStringLiteral("active_field")).toString();
     state.encounterTable = root.value(QStringLiteral("encounter_table")).toInt();
     state.expertMetadata = root.value(QStringLiteral("expert_metadata")).toBool();
+    if (schemaVersion >= 4) {
+        state.contextOpacityPercent = std::clamp(
+            root.value(QStringLiteral("context_opacity_percent")).toInt(40), 0, 100);
+    }
     const auto camera = root.value(QStringLiteral("camera")).toObject();
     state.orbitCenter = QVector3D(
         static_cast<float>(camera.value(QStringLiteral("x")).toDouble()),
@@ -124,6 +129,12 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
     for (const auto value : root.value(QStringLiteral("selection")).toArray()) {
         const auto key = keyFromJson(value.toObject());
         if (key.has_value()) state.selection.push_back(*key);
+    }
+    if (schemaVersion >= 5) {
+        state.mainWindowGeometry = QByteArray::fromBase64(
+            root.value(QStringLiteral("main_window_geometry")).toString().toLatin1());
+        state.mainWindowState = QByteArray::fromBase64(
+            root.value(QStringLiteral("main_window_state")).toString().toLatin1());
     }
     error_.clear();
     return state;
@@ -144,16 +155,21 @@ bool WorkspaceStateStore::save(const WorkspaceState& state) {
     for (const auto& key : state.selection) selection.push_back(keyToJson(key));
 
     QJsonObject root{};
-    root.insert(QStringLiteral("schema_version"), 3);
+    root.insert(QStringLiteral("schema_version"), 5);
     root.insert(QStringLiteral("game_data_root"), state.gameDataRoot);
     root.insert(QStringLiteral("field_directory"), state.fieldDirectory);
     root.insert(QStringLiteral("alx_data_root"), state.alxDataRoot);
     root.insert(QStringLiteral("active_field"), state.activeField);
     root.insert(QStringLiteral("encounter_table"), state.encounterTable);
     root.insert(QStringLiteral("expert_metadata"), state.expertMetadata);
+    root.insert(QStringLiteral("context_opacity_percent"), state.contextOpacityPercent);
     root.insert(QStringLiteral("camera"), camera);
     root.insert(QStringLiteral("hidden_batches"), hidden);
     root.insert(QStringLiteral("selection"), selection);
+    root.insert(QStringLiteral("main_window_geometry"),
+        QString::fromLatin1(state.mainWindowGeometry.toBase64()));
+    root.insert(QStringLiteral("main_window_state"),
+        QString::fromLatin1(state.mainWindowState.toBase64()));
 
     QSaveFile output(statePath());
     if (!output.open(QIODevice::WriteOnly)) {

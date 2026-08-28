@@ -337,6 +337,14 @@ std::size_t appendContextMesh(
     std::size_t invalidTriangles = 0U;
     std::size_t trailingCorners = 0U;
     for (const auto& triangleSet : mesh.triangleSets) {
+        bool doubleSided = true;
+        if (triangleSet.materialIndex < mesh.materials.size()) {
+            doubleSided = mesh.materials[triangleSet.materialIndex].doubleSided;
+        } else {
+            diagnostics.push_back({ DiagnosticSeverity::Warning,
+                entryLabel + " mesh=" + mesh.label + " references missing material " +
+                    std::to_string(triangleSet.materialIndex) + "; affected triangles were rendered double-sided." });
+        }
         trailingCorners += triangleSet.corners.size() % 3U;
         for (std::size_t base = 0; base + 2U < triangleSet.corners.size(); base += 3U) {
             const auto a = triangleSet.corners[base + 0U].vertexIndex;
@@ -361,6 +369,7 @@ std::size_t appendContextMesh(
                 batch.vertices.push_back({ positions[corner], normal });
                 expandBounds(bounds, positions[corner]);
             }
+            batch.triangleDoubleSided.push_back(doubleSided ? 1U : 0U);
             ++appendedTriangles;
         }
     }

@@ -28,7 +28,7 @@ ordinary Dreamcast fields.
 - Optionally load ALX 5.0.0 `enemy.csv` and `enemyencounter.csv` through
   SpiceTrade and inspect the selected ECT row's formation and enemy names in a
   separate read-only dock.
-- Resume the most recent root, field, table, camera, visibility, selection,
+- Resume the most recent root, field, table, camera, field-context opacity, visibility, selection,
   ALX directory, and field patches from the portable `workspace` directory.
 
 Area 99, GameCube, ALX editing/export, and detailed enemy-stat inspection remain

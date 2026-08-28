@@ -12,6 +12,7 @@ Item {
     property real orbitDistance: 500
     property real orbitYaw: 0
     property real orbitPitch: -20
+    property real contextOpacity: 0.4
     readonly property real minOrbitDistance: 20
     property bool initialized: false
 
@@ -54,6 +55,7 @@ Item {
     View3D {
         id: sceneView
         anchors.fill: parent
+        camera: activeCamera
 
         environment: SceneEnvironment {
             clearColor: "#101318"
@@ -67,7 +69,7 @@ Item {
             position: root.orbitCenter
             eulerRotation: Qt.vector3d(root.orbitPitch, root.orbitYaw, 0)
             PerspectiveCamera {
-                id: camera
+                id: activeCamera
                 position: Qt.vector3d(0, 0, root.orbitDistance)
                 clipNear: Math.max(0.01, root.orbitDistance * 0.0001)
                 clipFar: Math.max(100000, root.orbitDistance * 100)
@@ -77,16 +79,19 @@ Item {
         Repeater3D {
             model: root.sceneMeshes.length
             delegate: Model {
+                id: sceneModelDelegate
                 required property int index
                 property var mesh: index >= 0 && index < root.sceneMeshes.length
                     ? root.sceneMeshes[index] : ({})
                 visible: mesh.visible !== false
+                opacity: mesh.context === true ? root.contextOpacity : 1.0
                 geometry: mesh.geometry
                 materials: DefaultMaterial {
                     vertexColorsEnabled: true
                     diffuseColor: "white"
                     lighting: DefaultMaterial.NoLighting
-                    cullMode: Material.NoCulling
+                    cullMode: sceneModelDelegate.mesh.doubleSided !== false
+                        ? Material.NoCulling : Material.BackFaceCulling
                 }
             }
         }

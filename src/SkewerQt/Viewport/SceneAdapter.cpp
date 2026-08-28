@@ -77,26 +77,23 @@ void appendTriangle(std::vector<RenderVertex>& vertices,
 [[nodiscard]] Color contextColor(const skewer::core::ContextObjectKind kind) {
     switch (kind) {
     case skewer::core::ContextObjectKind::Wall:
-        return { 0.38F, 0.43F, 0.50F, 0.38F };
+        return { 0.38F, 0.43F, 0.50F, 1.0F };
     case skewer::core::ContextObjectKind::WallUv:
-        return { 0.32F, 0.48F, 0.58F, 0.38F };
+        return { 0.32F, 0.48F, 0.58F, 1.0F };
     case skewer::core::ContextObjectKind::DoorWall:
-        return { 0.62F, 0.45F, 0.25F, 0.48F };
+        return { 0.62F, 0.45F, 0.25F, 1.0F };
     }
-    return { 0.45F, 0.45F, 0.45F, 0.38F };
+    return { 0.45F, 0.45F, 0.45F, 1.0F };
 }
 
-void appendContextVertices(std::vector<RenderVertex>& vertices,
-    const skewer::core::SceneContextBatch& batch) {
-    const auto color = contextColor(batch.kind);
-    vertices.reserve(vertices.size() + batch.vertices.size());
-    for (const auto& vertex : batch.vertices) {
+void appendContextVertex(std::vector<RenderVertex>& vertices,
+    const skewer::core::SceneContextVertex& vertex,
+    const Color color) {
         vertices.push_back({
             vertex.position.x, vertex.position.y, vertex.position.z,
             vertex.normal.x, vertex.normal.y, vertex.normal.z,
             color.r, color.g, color.b, color.a,
         });
-    }
 }
 
 } // namespace
@@ -126,11 +123,13 @@ void SceneAdapter::setSelection(
 
 QVariantList SceneAdapter::sceneMeshes() const {
     QVariantList result{};
-    for (std::size_t index = 0; index < sceneGeometry_.size(); ++index) {
+    for (const auto& entry : sceneGeometry_) {
         QVariantMap mesh{};
-        mesh.insert(QStringLiteral("geometry"), QVariant::fromValue<QObject*>(sceneGeometry_[index].get()));
+        mesh.insert(QStringLiteral("geometry"), QVariant::fromValue<QObject*>(entry.geometry.get()));
         mesh.insert(QStringLiteral("visible"),
-            index < visibility_.size() ? visibility_[index] != 0U : true);
+            entry.visibilityIndex < visibility_.size() ? visibility_[entry.visibilityIndex] != 0U : true);
+        mesh.insert(QStringLiteral("context"), entry.context);
+        mesh.insert(QStringLiteral("doubleSided"), entry.doubleSided);
         result.push_back(mesh);
     }
     return result;
@@ -153,8 +152,9 @@ const std::vector<std::uint8_t>& SceneAdapter::visibility() const noexcept {
 void SceneAdapter::rebuildScene() {
     sceneGeometry_.clear();
     if (scene_ == nullptr) return;
-    sceneGeometry_.reserve(scene_->batches.size() + scene_->contextBatches.size());
-    for (const auto& batch : scene_->batches) {
+    sceneGeometry_.reserve(scene_->batches.size() + scene_->contextBatches.size() * 2U);
+    for (std::size_t batchIndex = 0; batchIndex < scene_->batches.size(); ++batchIndex) {
+        const auto& batch = scene_->batches[batchIndex];
         std::vector<RenderVertex> vertices{};
         vertices.reserve(batch.triangleIndices.size() * 3U);
         for (const auto triangleIndex : batch.triangleIndices) {
@@ -165,15 +165,29 @@ void SceneAdapter::rebuildScene() {
         auto geometry = std::make_unique<SelectorGeometry>();
         geometry->setTriangles(vertices);
         QQmlEngine::setObjectOwnership(geometry.get(), QQmlEngine::CppOwnership);
-        sceneGeometry_.push_back(std::move(geometry));
+        sceneGeometry_.push_back({ std::move(geometry), batchIndex, false, true });
     }
-    for (const auto& batch : scene_->contextBatches) {
-        std::vector<RenderVertex> vertices{};
-        appendContextVertices(vertices, batch);
-        auto geometry = std::make_unique<SelectorGeometry>();
-        geometry->setTriangles(vertices);
-        QQmlEngine::setObjectOwnership(geometry.get(), QQmlEngine::CppOwnership);
-        sceneGeometry_.push_back(std::move(geometry));
+    for (std::size_t batchIndex = 0; batchIndex < scene_->contextBatches.size(); ++batchIndex) {
+        const auto& batch = scene_->contextBatches[batchIndex];
+        std::array<std::vector<RenderVertex>, 2> verticesBySidedness{};
+        const auto color = contextColor(batch.kind);
+        for (std::size_t triangleIndex = 0; triangleIndex < batch.triangleCount(); ++triangleIndex) {
+            const bool doubleSided = triangleIndex >= batch.triangleDoubleSided.size() ||
+                batch.triangleDoubleSided[triangleIndex] != 0U;
+            auto& vertices = verticesBySidedness[doubleSided ? 1U : 0U];
+            vertices.reserve(vertices.size() + 3U);
+            for (std::size_t corner = 0; corner < 3U; ++corner) {
+                appendContextVertex(vertices, batch.vertices[triangleIndex * 3U + corner], color);
+            }
+        }
+        for (std::size_t sidedness = 0; sidedness < verticesBySidedness.size(); ++sidedness) {
+            if (verticesBySidedness[sidedness].empty()) continue;
+            auto geometry = std::make_unique<SelectorGeometry>();
+            geometry->setTriangles(verticesBySidedness[sidedness]);
+            QQmlEngine::setObjectOwnership(geometry.get(), QQmlEngine::CppOwnership);
+            sceneGeometry_.push_back({ std::move(geometry), scene_->batches.size() + batchIndex,
+                true, sidedness != 0U });
+        }
     }
 }
 

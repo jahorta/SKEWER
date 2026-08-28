@@ -1,7 +1,7 @@
 # Field Workspace and Encounter Data
 
 Status: initial data-contract baseline
-Last reviewed: 2026-08-27
+Last reviewed: 2026-08-28
 
 ## Located FIELD directory
 
@@ -26,11 +26,14 @@ struct FieldCatalogEntry {
     std::string fieldStem;
     std::filesystem::path ectPath;
     std::optional<std::filesystem::path> mldPath;
+    std::optional<std::filesystem::path> sctPath;
     FieldAvailability availability;
 };
 ```
 
 MLD files without a matching ECT do not create list entries. An ECT without an MLD remains visible to explain the dataset but cannot be selected. Duplicate case-folded stems or multiple files competing for one side of a pair are ambiguous and should be reported rather than selected arbitrarily. A `FIELD` directory with no ECT files is an open failure with a clear diagnostic, not an empty successful workspace.
+
+For an ordinary field, SKEWER may also pair one optional direct-child SCT by comparing basenames case-insensitively. Its expected basename is `ME` plus the field stem with its leading `A` removed; for example, `A111C` pairs with `ME111C.SCT`. The actual path and spelling are retained. A missing, ambiguous, or unparseable SCT prevents derived state presets but does not disable ordinary MLD/ECT browsing or editing.
 
 Initial SKEWER support is Dreamcast-only. Field discovery should not infer platform from directory names. It probes relevant ECT and MLD assets across the located FIELD directory before presenting a usable field catalog. If any asset is identified as GameCube, SKEWER rejects the whole directory with `GameCube is not yet supported.` The directory is treated as one extracted platform dataset rather than a mixture of independently supported pairs.
 
@@ -77,6 +80,22 @@ The distinction makes invalid states unrepresentable:
 At the SPICE export boundary only, each variant is translated into `DreamcastTriangleSelectorEdit`: GRND supplies no `gobjNodeIndex`, while GOBJ supplies its required node index.
 
 Render batches, tree rows, selections, edit overlays, validation diagnostics, and undo records all use these stable keys. Pointers, transient array positions, QML object identities, and GPU vertex indices are not document keys.
+
+## Event-ground groups and variants
+
+An event-ground group represents one MLD entry's `groundAddresses` list. Its stable key is the MLD identity plus entry table index; the entry ID and signed `tblId` are retained as metadata. Entry table index, rather than `tblId` or physical resource address, preserves separate identities when multiple entries share a `tblId` or refer to the same resource.
+
+Each group variant retains:
+
+- its zero-based `groundAddresses` ordinal;
+- its exact physical resource address as provenance;
+- its decoded resource kind, GRND or GOBJ.
+
+The semantic group state is either `Disabled` or `Variant N`. Selecting a GRND variant enables that GRND batch. Selecting a GOBJ variant enables every rendered node batch belonging to that GOBJ address as one logical resource. A single list may contain GRND and GOBJ variants at different ordinals; the decoded tag does not create a second ordinal namespace or alter the selection rule.
+
+Reference role is explicit and survives scene construction. Membership in `groundAddresses` creates event-ground variant membership, while membership in `objectAddresses` creates an ordinary object reference. A physical GOBJ present in both lists has two references with different roles; SKEWER must not collapse them into one activation rule. Physical address remains provenance, not the semantic variant discriminator.
+
+Opcode-114 resolution uses the signed `tblId` to locate the owning entry and its operand as the requested `groundAddresses` ordinal. Duplicate matching `tblId` entries and ordinals outside the selected entry's list are diagnostics. SKEWER does not guess among duplicates, wrap an ordinal, or choose a variant according to resource kind.
 
 ## Selector edit overlay
 
@@ -209,11 +228,13 @@ Unexported edits are stored in a SKEWER working directory beside the portable ex
 
 The working directory contains one active workspace for the located FIELD dataset. That workspace may retain edits for any number of its fields. Its data is divided deliberately:
 
-- `workspace.json` identifies the source game-data root and located FIELD directory and retains resumable UI state such as selected field, active table, camera, visibility, and triangle selection;
+- `workspace.json` identifies the source game-data root and located FIELD directory and retains resumable UI state such as selected field, active table, camera, resource visibility, selected state preset, and triangle selection;
 - `patches/<field-stem>.skewer.patch.json` contains that field's sparse semantic MLD selector edits and ECT table edits, including expected and replacement values;
 - one patch file contains both native asset domains for one field so the complete authored field change can be reviewed and exported as a unit.
 
 Patch documents use distinct serialized GRND and GOBJ key shapes. They contain stable resource/node/triangle and table/row identities, never physical file offsets, replacement byte strings, absolute source paths, camera state, or selections. SPICE derives physical MLD offsets from the current parsed source during planning, while SpiceEct serializes a current in-memory semantic model.
+
+Event-ground group state, selected SCT preset, and resulting resource visibility are presentation/session state only. They remain in `workspace.json` and never become MLD selector edits, ECT edits, SCT edits, or per-field patch content.
 
 SKEWER checkpoints the affected patch atomically after semantic edit transactions, when switching fields, and again during orderly shutdown. Undo history is intentionally not persisted. Switching fields within the same FIELD workspace does not require exporting or discarding other fields' changes.
 
