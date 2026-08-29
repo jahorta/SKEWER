@@ -89,25 +89,28 @@ Item {
                 property var mesh: index >= 0 && index < root.sceneMeshes.length
                     ? root.sceneMeshes[index] : ({})
                 visible: mesh.visible !== false
-                opacity: mesh.context === true ? root.contextOpacity : 1.0
+                    && (mesh.context !== true || root.contextOpacity > 0)
                 geometry: mesh.geometry
                 materials: mesh.context === true ? [contextMaterial] : [encounterMaterial]
-                DefaultMaterial {
+                CustomMaterial {
                     id: contextMaterial
-                    vertexColorsEnabled: true
-                    diffuseColor: "white"
-                    lighting: DefaultMaterial.NoLighting
+                    property real depthOffset: 0.0
+                    property real materialOpacity: root.contextOpacity
+                    shadingMode: CustomMaterial.Unshaded
+                    vertexShader: "EncounterDepth.vert"
+                    fragmentShader: "VertexColor.frag"
+                    sourceBlend: CustomMaterial.SrcAlpha
+                    destinationBlend: CustomMaterial.OneMinusSrcAlpha
                     cullMode: sceneModelDelegate.mesh.doubleSided !== false
                         ? Material.NoCulling : Material.BackFaceCulling
                 }
                 CustomMaterial {
                     id: encounterMaterial
                     property real depthOffset: root.encounterDepthOffset
+                    property real materialOpacity: 1.0
                     shadingMode: CustomMaterial.Unshaded
                     vertexShader: "EncounterDepth.vert"
                     fragmentShader: "VertexColor.frag"
-                    sourceBlend: CustomMaterial.SrcAlpha
-                    destinationBlend: CustomMaterial.OneMinusSrcAlpha
                     cullMode: sceneModelDelegate.mesh.doubleSided !== false
                         ? Material.NoCulling : Material.BackFaceCulling
                 }
@@ -123,6 +126,7 @@ Item {
                 geometry: mesh.geometry
                 materials: CustomMaterial {
                     property real depthOffset: root.selectionDepthOffset
+                    property real materialOpacity: 1.0
                     shadingMode: CustomMaterial.Unshaded
                     vertexShader: "EncounterDepth.vert"
                     fragmentShader: "VertexColor.frag"

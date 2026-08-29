@@ -18,16 +18,16 @@ struct Color {
 };
 
 constexpr std::array<Color, 10> kPalette = {
-    Color{ 0.34F, 0.36F, 0.40F, 0.72F },
-    Color{ 0.15F, 0.62F, 0.95F, 0.80F },
-    Color{ 0.15F, 0.78F, 0.42F, 0.80F },
-    Color{ 0.98F, 0.73F, 0.18F, 0.80F },
-    Color{ 0.92F, 0.28F, 0.31F, 0.80F },
-    Color{ 0.65F, 0.35F, 0.91F, 0.80F },
-    Color{ 0.08F, 0.77F, 0.77F, 0.80F },
-    Color{ 0.95F, 0.43F, 0.78F, 0.80F },
-    Color{ 0.72F, 0.82F, 0.24F, 0.80F },
-    Color{ 1.00F, 0.00F, 1.00F, 0.90F },
+    Color{ 0.34F, 0.36F, 0.40F, 1.00F },
+    Color{ 0.15F, 0.62F, 0.95F, 1.00F },
+    Color{ 0.15F, 0.78F, 0.42F, 1.00F },
+    Color{ 0.98F, 0.73F, 0.18F, 1.00F },
+    Color{ 0.92F, 0.28F, 0.31F, 1.00F },
+    Color{ 0.65F, 0.35F, 0.91F, 1.00F },
+    Color{ 0.08F, 0.77F, 0.77F, 1.00F },
+    Color{ 0.95F, 0.43F, 0.78F, 1.00F },
+    Color{ 0.72F, 0.82F, 0.24F, 1.00F },
+    Color{ 1.00F, 0.00F, 1.00F, 1.00F },
 };
 
 [[nodiscard]] skewer::core::SceneVec3 subtract(

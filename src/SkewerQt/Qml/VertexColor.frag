@@ -2,5 +2,5 @@ VARYING vec4 vertexColor;
 
 void MAIN()
 {
-    FRAGCOLOR = vertexColor;
+    FRAGCOLOR = vec4(vertexColor.rgb, vertexColor.a * materialOpacity);
 }
