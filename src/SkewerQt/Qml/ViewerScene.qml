@@ -13,7 +13,6 @@ Item {
     property real orbitYaw: 0
     property real orbitPitch: -20
     property real contextOpacity: 0.4
-    readonly property real encounterSortBias: -100
     readonly property real minOrbitDistance: 20
     property bool initialized: false
 
@@ -88,7 +87,6 @@ Item {
                     ? root.sceneMeshes[index] : ({})
                 visible: mesh.visible !== false
                 opacity: mesh.context === true ? root.contextOpacity : 1.0
-                depthBias: mesh.context === true ? 0 : root.encounterSortBias
                 geometry: mesh.geometry
                 materials: DefaultMaterial {
                     vertexColorsEnabled: true
