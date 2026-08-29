@@ -62,7 +62,6 @@ Item {
         environment: SceneEnvironment {
             clearColor: "#101318"
             backgroundMode: SceneEnvironment.Color
-            oitMethod: SceneEnvironment.OITWeightedBlended
             antialiasingMode: SceneEnvironment.MSAA
             antialiasingQuality: SceneEnvironment.High
         }
