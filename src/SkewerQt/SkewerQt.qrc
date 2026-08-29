@@ -1,5 +1,7 @@
 <RCC>
   <qresource prefix="/qml">
+    <file>Qml/EncounterDepth.vert</file>
+    <file>Qml/VertexColor.frag</file>
     <file>Qml/ViewerScene.qml</file>
   </qresource>
 </RCC>

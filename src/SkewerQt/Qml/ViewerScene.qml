@@ -13,6 +13,8 @@ Item {
     property real orbitYaw: 0
     property real orbitPitch: -20
     property real contextOpacity: 0.4
+    readonly property real encounterDepthOffset: 0.0000002
+    readonly property real selectionDepthOffset: 0.0000004
     readonly property real minOrbitDistance: 20
     property bool initialized: false
 
@@ -60,6 +62,7 @@ Item {
         environment: SceneEnvironment {
             clearColor: "#101318"
             backgroundMode: SceneEnvironment.Color
+            oitMethod: SceneEnvironment.OITWeightedBlended
             antialiasingMode: SceneEnvironment.MSAA
             antialiasingQuality: SceneEnvironment.High
         }
@@ -88,10 +91,23 @@ Item {
                 visible: mesh.visible !== false
                 opacity: mesh.context === true ? root.contextOpacity : 1.0
                 geometry: mesh.geometry
-                materials: DefaultMaterial {
+                materials: mesh.context === true ? [contextMaterial] : [encounterMaterial]
+                DefaultMaterial {
+                    id: contextMaterial
                     vertexColorsEnabled: true
                     diffuseColor: "white"
                     lighting: DefaultMaterial.NoLighting
+                    cullMode: sceneModelDelegate.mesh.doubleSided !== false
+                        ? Material.NoCulling : Material.BackFaceCulling
+                }
+                CustomMaterial {
+                    id: encounterMaterial
+                    property real depthOffset: root.encounterDepthOffset
+                    shadingMode: CustomMaterial.Unshaded
+                    vertexShader: "EncounterDepth.vert"
+                    fragmentShader: "VertexColor.frag"
+                    sourceBlend: CustomMaterial.SrcAlpha
+                    destinationBlend: CustomMaterial.OneMinusSrcAlpha
                     cullMode: sceneModelDelegate.mesh.doubleSided !== false
                         ? Material.NoCulling : Material.BackFaceCulling
                 }
@@ -105,10 +121,11 @@ Item {
                 property var mesh: index >= 0 && index < root.selectionMeshes.length
                     ? root.selectionMeshes[index] : ({})
                 geometry: mesh.geometry
-                materials: DefaultMaterial {
-                    vertexColorsEnabled: true
-                    diffuseColor: "white"
-                    lighting: DefaultMaterial.NoLighting
+                materials: CustomMaterial {
+                    property real depthOffset: root.selectionDepthOffset
+                    shadingMode: CustomMaterial.Unshaded
+                    vertexShader: "EncounterDepth.vert"
+                    fragmentShader: "VertexColor.frag"
                     cullMode: Material.NoCulling
                 }
             }

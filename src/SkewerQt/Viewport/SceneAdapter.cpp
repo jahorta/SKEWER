@@ -6,7 +6,6 @@
 
 #include <array>
 #include <cmath>
-#include <variant>
 
 namespace skewer::qt {
 namespace {
@@ -30,14 +29,6 @@ constexpr std::array<Color, 10> kPalette = {
     Color{ 0.72F, 0.82F, 0.24F, 0.80F },
     Color{ 1.00F, 0.00F, 1.00F, 0.90F },
 };
-
-constexpr float kGrndNormalOffsetScale = 0.0004F;
-constexpr float kGrndSelectionNormalOffsetScale = 0.0008F;
-constexpr float kGobjSelectionNormalOffsetScale = 0.0004F;
-
-[[nodiscard]] bool isGrndTriangle(const skewer::core::SceneTriangle& triangle) {
-    return std::holds_alternative<skewer::core::GrndTriangleKey>(triangle.key);
-}
 
 [[nodiscard]] skewer::core::SceneVec3 subtract(
     const skewer::core::SceneVec3& lhs,
@@ -69,14 +60,11 @@ constexpr float kGobjSelectionNormalOffsetScale = 0.0004F;
 
 void appendTriangle(std::vector<RenderVertex>& vertices,
     const skewer::core::SceneTriangle& triangle,
-    const Color color,
-    const float normalOffset = 0.0F) {
+    const Color color) {
     const auto normal = faceNormal(triangle);
     for (const auto& point : triangle.positions) {
         vertices.push_back({
-            point.x + normal.x * normalOffset,
-            point.y + normal.y * normalOffset,
-            point.z + normal.z * normalOffset,
+            point.x, point.y, point.z,
             normal.x, normal.y, normal.z,
             color.r, color.g, color.b, color.a,
         });
@@ -169,9 +157,7 @@ void SceneAdapter::rebuildScene() {
         for (const auto triangleIndex : batch.triangleIndices) {
             const auto& triangle = scene_->triangles[triangleIndex];
             const auto paletteIndex = triangle.selector <= 8U ? triangle.selector : 9U;
-            const float normalOffset = isGrndTriangle(triangle)
-                ? scene_->extent * kGrndNormalOffsetScale : 0.0F;
-            appendTriangle(vertices, triangle, kPalette[paletteIndex], normalOffset);
+            appendTriangle(vertices, triangle, kPalette[paletteIndex]);
         }
         auto geometry = std::make_unique<SelectorGeometry>();
         geometry->setTriangles(vertices);
@@ -208,10 +194,7 @@ void SceneAdapter::rebuildSelection() {
     std::vector<RenderVertex> vertices{};
     for (const auto& triangle : scene_->triangles) {
         if (selection_.find(triangle.key) == selection_.end()) continue;
-        const float offsetScale = isGrndTriangle(triangle)
-            ? kGrndSelectionNormalOffsetScale : kGobjSelectionNormalOffsetScale;
-        appendTriangle(vertices, triangle, Color{ 1.0F, 0.95F, 0.12F, 1.0F },
-            scene_->extent * offsetScale);
+        appendTriangle(vertices, triangle, Color{ 1.0F, 0.95F, 0.12F, 1.0F });
     }
     selectionGeometry_ = std::make_unique<SelectorGeometry>();
     selectionGeometry_->setTriangles(vertices);

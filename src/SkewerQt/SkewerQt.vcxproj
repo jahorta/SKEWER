@@ -63,7 +63,11 @@
     <ClInclude Include="Widgets\GroundMetadataWidget.h" />
   </ItemGroup>
   <ItemGroup><QtRcc Include="SkewerQt.qrc" /></ItemGroup>
-  <ItemGroup><None Include="Qml\ViewerScene.qml" /></ItemGroup>
+  <ItemGroup>
+    <None Include="Qml\EncounterDepth.vert" />
+    <None Include="Qml\VertexColor.frag" />
+    <None Include="Qml\ViewerScene.qml" />
+  </ItemGroup>
   <ItemGroup><ProjectReference Include="..\SkewerCore\SkewerCore.vcxproj"><Project>{A1875091-0BE3-44D0-B97A-A1E22E719691}</Project></ProjectReference></ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Condition="Exists('$(QtMsBuild)\qt.targets')"><Import Project="$(QtMsBuild)\qt.targets" /></ImportGroup>
