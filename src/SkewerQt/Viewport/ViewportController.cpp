@@ -43,6 +43,10 @@ void ViewportController::setContextOpacity(const int percent) {
     viewport_->setContextOpacity(percent);
 }
 
+void ViewportController::setVisualSettings(const VisualSettings& settings) {
+    viewport_->setVisualSettings(settings);
+}
+
 void ViewportController::setCameraState(const ViewportCameraState& state) {
     viewport_->setCameraState(state);
 }

@@ -18,6 +18,8 @@ struct RenderVertex {
     float g = 1.0F;
     float b = 1.0F;
     float a = 1.0F;
+    float u = 0.0F;
+    float v = 0.0F;
 };
 
 class SelectorGeometry final : public QQuick3DGeometry {

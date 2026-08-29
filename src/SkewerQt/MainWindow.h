@@ -21,6 +21,7 @@ class FieldSceneWidget;
 class FormationInspectorWidget;
 class GroundMetadataWidget;
 class TriangleInspectorWidget;
+class VisualSettingsDialog;
 class ViewportController;
 class ViewportWidget;
 
@@ -97,6 +98,7 @@ private:
     EncounterEditorWidget* encounterEditor_ = nullptr;
     FormationInspectorWidget* formationInspector_ = nullptr;
     DiagnosticsWidget* diagnosticsWidget_ = nullptr;
+    VisualSettingsDialog* visualSettingsDialog_ = nullptr;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;
     QAction* selectAlxAction_ = nullptr;

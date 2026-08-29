@@ -14,6 +14,30 @@
 namespace skewer::qt {
 namespace {
 
+[[nodiscard]] int visualPercent(const QJsonObject& object, const QString& key) {
+    return std::clamp(
+        object.value(key).toInt(kVisualAdjustmentNeutralPercent),
+        kVisualAdjustmentMinimumPercent,
+        kVisualAdjustmentMaximumPercent);
+}
+
+[[nodiscard]] LayerVisualSettings layerVisualSettingsFromJson(const QJsonObject& object) {
+    return {
+        visualPercent(object, QStringLiteral("brightness_percent")),
+        visualPercent(object, QStringLiteral("saturation_percent")),
+        visualPercent(object, QStringLiteral("contrast_percent"))
+    };
+}
+
+[[nodiscard]] QJsonObject layerVisualSettingsToJson(const LayerVisualSettings& settings) {
+    const auto clamped = clampedLayerVisualSettings(settings);
+    QJsonObject object{};
+    object.insert(QStringLiteral("brightness_percent"), clamped.brightnessPercent);
+    object.insert(QStringLiteral("saturation_percent"), clamped.saturationPercent);
+    object.insert(QStringLiteral("contrast_percent"), clamped.contrastPercent);
+    return object;
+}
+
 [[nodiscard]] QJsonObject keyToJson(const skewer::core::TriangleKey& key) {
     QJsonObject object{};
     if (const auto* grnd = std::get_if<skewer::core::GrndTriangleKey>(&key)) {
@@ -100,7 +124,7 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
     }
     const auto root = document.object();
     const auto schemaVersion = root.value(QStringLiteral("schema_version")).toInt();
-    if (schemaVersion < 1 || schemaVersion > 6) {
+    if (schemaVersion < 1 || schemaVersion > 7) {
         error_ = QStringLiteral("Unsupported workspace schema version.");
         return std::nullopt;
     }
@@ -114,6 +138,15 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
     if (schemaVersion >= 4) {
         state.contextOpacityPercent = std::clamp(
             root.value(QStringLiteral("context_opacity_percent")).toInt(40), 0, 100);
+    }
+    if (schemaVersion >= 7) {
+        const auto visuals = root.value(QStringLiteral("visuals")).toObject();
+        state.visualSettings.encounter = layerVisualSettingsFromJson(
+            visuals.value(QStringLiteral("encounter")).toObject());
+        state.visualSettings.fieldContext = layerVisualSettingsFromJson(
+            visuals.value(QStringLiteral("field_context")).toObject());
+        state.visualSettings.encounterEdgesEnabled =
+            visuals.value(QStringLiteral("encounter_edges_enabled")).toBool(false);
     }
     const auto camera = root.value(QStringLiteral("camera")).toObject();
     state.orbitCenter = QVector3D(
@@ -163,9 +196,17 @@ bool WorkspaceStateStore::save(const WorkspaceState& state) {
     for (const auto& label : state.hiddenBatches) hidden.push_back(label);
     QJsonArray selection{};
     for (const auto& key : state.selection) selection.push_back(keyToJson(key));
+    const auto visualSettings = clampedVisualSettings(state.visualSettings);
+    QJsonObject visuals{};
+    visuals.insert(QStringLiteral("encounter"),
+        layerVisualSettingsToJson(visualSettings.encounter));
+    visuals.insert(QStringLiteral("field_context"),
+        layerVisualSettingsToJson(visualSettings.fieldContext));
+    visuals.insert(QStringLiteral("encounter_edges_enabled"),
+        visualSettings.encounterEdgesEnabled);
 
     QJsonObject root{};
-    root.insert(QStringLiteral("schema_version"), 6);
+    root.insert(QStringLiteral("schema_version"), 7);
     root.insert(QStringLiteral("game_data_root"), state.gameDataRoot);
     root.insert(QStringLiteral("field_directory"), state.fieldDirectory);
     root.insert(QStringLiteral("alx_data_root"), state.alxDataRoot);
@@ -173,6 +214,7 @@ bool WorkspaceStateStore::save(const WorkspaceState& state) {
     root.insert(QStringLiteral("encounter_table"), state.encounterTable);
     root.insert(QStringLiteral("expert_metadata"), state.expertMetadata);
     root.insert(QStringLiteral("context_opacity_percent"), state.contextOpacityPercent);
+    root.insert(QStringLiteral("visuals"), visuals);
     root.insert(QStringLiteral("camera"), camera);
     root.insert(QStringLiteral("hidden_batches"), hidden);
     root.insert(QStringLiteral("event_ground_mode"), state.eventGroundMode);

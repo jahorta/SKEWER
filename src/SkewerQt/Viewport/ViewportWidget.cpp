@@ -72,6 +72,25 @@ void ViewportWidget::setContextOpacity(const int percent) {
     }
 }
 
+void ViewportWidget::setVisualSettings(const VisualSettings& settings) {
+    visualSettings_ = clampedVisualSettings(settings);
+    if (quickView_->rootObject() == nullptr) return;
+    auto* root = quickView_->rootObject();
+    root->setProperty("encounterBrightness",
+        static_cast<double>(visualSettings_.encounter.brightnessPercent) / 100.0);
+    root->setProperty("encounterSaturation",
+        static_cast<double>(visualSettings_.encounter.saturationPercent) / 100.0);
+    root->setProperty("encounterContrast",
+        static_cast<double>(visualSettings_.encounter.contrastPercent) / 100.0);
+    root->setProperty("contextBrightness",
+        static_cast<double>(visualSettings_.fieldContext.brightnessPercent) / 100.0);
+    root->setProperty("contextSaturation",
+        static_cast<double>(visualSettings_.fieldContext.saturationPercent) / 100.0);
+    root->setProperty("contextContrast",
+        static_cast<double>(visualSettings_.fieldContext.contrastPercent) / 100.0);
+    root->setProperty("encounterEdgesEnabled", visualSettings_.encounterEdgesEnabled);
+}
+
 void ViewportWidget::setCameraState(const ViewportCameraState& state) {
     cameraState_ = state;
     cameraState_.distance = std::max(20.0F, cameraState_.distance);
@@ -120,6 +139,7 @@ void ViewportWidget::applyPendingState() {
     setSceneMeshes(sceneMeshes_);
     setSelectionMeshes(selectionMeshes_);
     setContextOpacity(contextOpacityPercent_);
+    setVisualSettings(visualSettings_);
     setCameraState(cameraState_);
 }
 

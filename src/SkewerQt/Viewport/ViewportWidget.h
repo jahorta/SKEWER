@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../VisualSettings.h"
+
 #include "SkewerCore/Diagnostics.h"
 #include "SkewerCore/SceneModel.h"
 
@@ -32,6 +34,7 @@ public:
     void setSceneMeshes(QVariantList meshes);
     void setSelectionMeshes(QVariantList meshes);
     void setContextOpacity(int percent);
+    void setVisualSettings(const VisualSettings& settings);
     void setCameraState(const ViewportCameraState& state);
     void frameAll(const skewer::core::SceneBounds& sceneBounds);
 
@@ -52,6 +55,7 @@ private:
     QVariantList selectionMeshes_{};
     ViewportCameraState cameraState_{};
     int contextOpacityPercent_ = 40;
+    VisualSettings visualSettings_{};
     std::vector<skewer::core::Diagnostic> loadDiagnostics_{};
 };
 

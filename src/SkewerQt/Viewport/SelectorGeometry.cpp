@@ -29,6 +29,7 @@ void SelectorGeometry::setTriangles(const std::vector<RenderVertex>& vertices) {
     addAttribute(Attribute::PositionSemantic, 0, Attribute::F32Type);
     addAttribute(Attribute::NormalSemantic, 3 * static_cast<int>(sizeof(float)), Attribute::F32Type);
     addAttribute(Attribute::ColorSemantic, 6 * static_cast<int>(sizeof(float)), Attribute::F32Type);
+    addAttribute(Attribute::TexCoord0Semantic, 10 * static_cast<int>(sizeof(float)), Attribute::F32Type);
 
     QVector3D minimum(std::numeric_limits<float>::max(),
         std::numeric_limits<float>::max(), std::numeric_limits<float>::max());

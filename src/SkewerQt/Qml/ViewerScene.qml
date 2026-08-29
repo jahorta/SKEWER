@@ -13,8 +13,17 @@ Item {
     property real orbitYaw: 0
     property real orbitPitch: -20
     property real contextOpacity: 0.4
+    property real encounterBrightness: 1.0
+    property real encounterSaturation: 1.0
+    property real encounterContrast: 1.0
+    property real contextBrightness: 1.0
+    property real contextSaturation: 1.0
+    property real contextContrast: 1.0
+    property bool encounterEdgesEnabled: false
     readonly property real encounterDepthOffset: 0.0000002
     readonly property real selectionDepthOffset: 0.0000004
+    readonly property real encounterEdgeWidth: 1.25
+    readonly property color encounterEdgeColor: "#20242B"
     readonly property real minOrbitDistance: 20
     property bool initialized: false
 
@@ -95,6 +104,12 @@ Item {
                     id: contextMaterial
                     property real depthOffset: 0.0
                     property real materialOpacity: root.contextOpacity
+                    property real materialBrightness: root.contextBrightness
+                    property real materialSaturation: root.contextSaturation
+                    property real materialContrast: root.contextContrast
+                    property bool edgesEnabled: false
+                    property real edgeWidth: root.encounterEdgeWidth
+                    property color edgeColor: root.encounterEdgeColor
                     shadingMode: CustomMaterial.Unshaded
                     vertexShader: "EncounterDepth.vert"
                     fragmentShader: "VertexColor.frag"
@@ -107,6 +122,12 @@ Item {
                     id: encounterMaterial
                     property real depthOffset: root.encounterDepthOffset
                     property real materialOpacity: 1.0
+                    property real materialBrightness: root.encounterBrightness
+                    property real materialSaturation: root.encounterSaturation
+                    property real materialContrast: root.encounterContrast
+                    property bool edgesEnabled: root.encounterEdgesEnabled
+                    property real edgeWidth: root.encounterEdgeWidth
+                    property color edgeColor: root.encounterEdgeColor
                     shadingMode: CustomMaterial.Unshaded
                     vertexShader: "EncounterDepth.vert"
                     fragmentShader: "VertexColor.frag"
@@ -126,6 +147,12 @@ Item {
                 materials: CustomMaterial {
                     property real depthOffset: root.selectionDepthOffset
                     property real materialOpacity: 1.0
+                    property real materialBrightness: 1.0
+                    property real materialSaturation: 1.0
+                    property real materialContrast: 1.0
+                    property bool edgesEnabled: false
+                    property real edgeWidth: root.encounterEdgeWidth
+                    property color edgeColor: root.encounterEdgeColor
                     shadingMode: CustomMaterial.Unshaded
                     vertexShader: "EncounterDepth.vert"
                     fragmentShader: "VertexColor.frag"

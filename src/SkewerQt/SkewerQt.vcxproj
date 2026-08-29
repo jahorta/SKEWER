@@ -45,6 +45,7 @@
     <ClCompile Include="Widgets\FormationInspectorWidget.cpp" />
     <ClCompile Include="Widgets\GroundMetadataWidget.cpp" />
     <ClCompile Include="Widgets\TriangleInspectorWidget.cpp" />
+    <ClCompile Include="Widgets\VisualSettingsDialog.cpp" />
     <QtMoc Include="MainWindow.h" />
     <QtMoc Include="Session\FieldSessionController.h" />
     <QtMoc Include="Session\WorkspaceController.h" />
@@ -53,8 +54,10 @@
     <QtMoc Include="Widgets\EncounterEditorWidget.h" />
     <QtMoc Include="Widgets\FieldSceneWidget.h" />
     <QtMoc Include="Widgets\TriangleInspectorWidget.h" />
+    <QtMoc Include="Widgets\VisualSettingsDialog.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="VisualSettings.h" />
     <ClInclude Include="Session\WorkspaceStateStore.h" />
     <ClInclude Include="Viewport\SceneAdapter.h" />
     <ClInclude Include="Viewport\SelectorGeometry.h" />

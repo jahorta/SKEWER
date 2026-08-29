@@ -8,6 +8,7 @@
 #include "Widgets/FormationInspectorWidget.h"
 #include "Widgets/GroundMetadataWidget.h"
 #include "Widgets/TriangleInspectorWidget.h"
+#include "Widgets/VisualSettingsDialog.h"
 
 #include "SkewerCore/ExportService.h"
 
@@ -77,6 +78,12 @@ MainWindow::MainWindow(QWidget* parent)
       workspace_(QCoreApplication::applicationDirPath()) {
     buildUi();
     connectControllers();
+
+    if (workspace_.startupState().has_value()) {
+        const auto& settings = workspace_.startupState()->visualSettings;
+        visualSettingsDialog_->setSettings(settings);
+        viewportController_->setVisualSettings(settings);
+    }
 
     const auto defaultGeometry = saveGeometry();
     const auto defaultDockState = saveState(kDockLayoutVersion);
@@ -160,6 +167,20 @@ void MainWindow::buildUi() {
         this, &MainWindow::exportPatches);
     auto* frameAction = menuBar()->addAction(QStringLiteral("Frame All"));
     connect(frameAction, &QAction::triggered, this, &MainWindow::frameAll);
+    auto* visualsMenu = menuBar()->addMenu(QStringLiteral("Visuals"));
+    auto* visualSettingsAction = visualsMenu->addAction(
+        QStringLiteral("Visual Settings..."));
+    visualSettingsDialog_ = new VisualSettingsDialog(this);
+    connect(visualSettingsAction, &QAction::triggered, this, [this]() {
+        visualSettingsDialog_->show();
+        visualSettingsDialog_->raise();
+        visualSettingsDialog_->activateWindow();
+    });
+    connect(visualSettingsDialog_, &VisualSettingsDialog::settingsChanged,
+        this, [this]() {
+            viewportController_->setVisualSettings(visualSettingsDialog_->settings());
+            scheduleCheckpoint();
+        });
     menuBar()->addSeparator();
     auto* exitAction = menuBar()->addAction(QStringLiteral("Exit"));
     connect(exitAction, &QAction::triggered, this, &QWidget::close);
@@ -217,6 +238,7 @@ void MainWindow::buildUi() {
     viewportWidget_ = new ViewportWidget(this);
     viewportController_ = new ViewportController(viewportWidget_, this);
     viewportController_->setContextOpacity(fieldScene_->contextOpacity());
+    viewportController_->setVisualSettings(visualSettingsDialog_->settings());
     setCentralWidget(viewportWidget_);
 
     connect(fieldScene_, &FieldSceneWidget::fieldSelectionRequested,
@@ -904,6 +926,7 @@ WorkspaceState MainWindow::captureState() const {
         0, encounterEditor_->currentTableIndex());
     state.expertMetadata = triangleInspector_->expertMode();
     state.contextOpacityPercent = fieldScene_->contextOpacity();
+    state.visualSettings = visualSettingsDialog_->settings();
     const auto camera = viewportController_->cameraState();
     state.orbitCenter = camera.center;
     state.orbitDistance = camera.distance;

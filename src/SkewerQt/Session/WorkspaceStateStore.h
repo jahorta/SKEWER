@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../VisualSettings.h"
+
 #include "SkewerCore/TriangleKeys.h"
 
 #include <QByteArray>
@@ -24,6 +26,7 @@ struct WorkspaceState {
     float orbitPitch = -20.0F;
     bool expertMetadata = false;
     int contextOpacityPercent = 40;
+    VisualSettings visualSettings{};
     QStringList hiddenBatches{};
     QString eventGroundMode{ QStringLiteral("raw") };
     QString eventGroundPresetId{};

@@ -30,6 +30,12 @@ constexpr std::array<Color, 10> kPalette = {
     Color{ 1.00F, 0.00F, 1.00F, 1.00F },
 };
 
+constexpr std::array<std::array<float, 2>, 3> kTriangleCoordinates = {
+    std::array<float, 2>{ 1.0F, 0.0F },
+    std::array<float, 2>{ 0.0F, 1.0F },
+    std::array<float, 2>{ 0.0F, 0.0F },
+};
+
 [[nodiscard]] skewer::core::SceneVec3 subtract(
     const skewer::core::SceneVec3& lhs,
     const skewer::core::SceneVec3& rhs) {
@@ -62,11 +68,13 @@ void appendTriangle(std::vector<RenderVertex>& vertices,
     const skewer::core::SceneTriangle& triangle,
     const Color color) {
     const auto normal = faceNormal(triangle);
-    for (const auto& point : triangle.positions) {
+    for (std::size_t corner = 0; corner < triangle.positions.size(); ++corner) {
+        const auto& point = triangle.positions[corner];
         vertices.push_back({
             point.x, point.y, point.z,
             normal.x, normal.y, normal.z,
             color.r, color.g, color.b, color.a,
+            kTriangleCoordinates[corner][0], kTriangleCoordinates[corner][1],
         });
     }
 }
@@ -85,11 +93,13 @@ void appendTriangle(std::vector<RenderVertex>& vertices,
 
 void appendContextVertex(std::vector<RenderVertex>& vertices,
     const skewer::core::SceneContextVertex& vertex,
-    const Color color) {
+    const Color color,
+    const std::size_t corner) {
         vertices.push_back({
             vertex.position.x, vertex.position.y, vertex.position.z,
             vertex.normal.x, vertex.normal.y, vertex.normal.z,
             color.r, color.g, color.b, color.a,
+            kTriangleCoordinates[corner][0], kTriangleCoordinates[corner][1],
         });
 }
 
@@ -174,7 +184,8 @@ void SceneAdapter::rebuildScene() {
             auto& vertices = verticesBySidedness[doubleSided ? 1U : 0U];
             vertices.reserve(vertices.size() + 3U);
             for (std::size_t corner = 0; corner < 3U; ++corner) {
-                appendContextVertex(vertices, batch.vertices[triangleIndex * 3U + corner], color);
+                appendContextVertex(
+                    vertices, batch.vertices[triangleIndex * 3U + corner], color, corner);
             }
         }
         for (std::size_t sidedness = 0; sidedness < verticesBySidedness.size(); ++sidedness) {
