@@ -17,10 +17,9 @@ GroundMetadataWidget::GroundMetadataWidget(QWidget* parent)
 }
 
 void GroundMetadataWidget::setTblId(const std::int32_t tblId) {
-    valueLabel_->setText(QStringLiteral("0x%1 (%2)")
-        .arg(static_cast<std::uint32_t>(tblId), 8, 16, QLatin1Char('0'))
-        .arg(tblId)
-        .toUpper());
+    const auto hexadecimal = QString::number(
+        static_cast<std::uint32_t>(tblId), 16).rightJustified(8, QLatin1Char('0')).toUpper();
+    valueLabel_->setText(QStringLiteral("0x%1 (%2)").arg(hexadecimal).arg(tblId));
 }
 
 void GroundMetadataWidget::clear() {

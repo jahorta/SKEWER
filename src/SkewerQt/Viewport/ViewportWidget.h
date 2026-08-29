@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SkewerCore/Diagnostics.h"
+#include "SkewerCore/SceneModel.h"
 
 #include <QPointer>
 #include <QVariantList>
@@ -32,7 +33,7 @@ public:
     void setSelectionMeshes(QVariantList meshes);
     void setContextOpacity(int percent);
     void setCameraState(const ViewportCameraState& state);
-    void frameAll(float sceneExtent);
+    void frameAll(const skewer::core::SceneBounds& sceneBounds);
 
     [[nodiscard]] ViewportCameraState cameraState() const;
     [[nodiscard]] bool isReady() const noexcept;

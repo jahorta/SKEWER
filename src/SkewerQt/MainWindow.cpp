@@ -33,6 +33,44 @@
 #include <filesystem>
 
 namespace skewer::qt {
+namespace {
+
+QStringList eventGroundHiddenIds(
+    const skewer::core::SceneModel& scene,
+    const skewer::core::EventGroundPreset* preset) {
+    QStringList result{};
+    for (const auto& group : scene.eventGroundGroups) {
+        std::optional<std::size_t> visibleOrdinal{};
+        if (preset == nullptr) continue;
+        const auto assignment = std::find_if(preset->assignments.begin(),
+            preset->assignments.end(), [&](const auto& candidate) {
+                return candidate.group == group.key;
+            });
+        if (assignment != preset->assignments.end() &&
+            assignment->state.kind == skewer::core::EventGroundStateKind::Variant) {
+            visibleOrdinal = assignment->state.variantOrdinal;
+        }
+        for (const auto& variant : group.variants) {
+            if (!visibleOrdinal.has_value() || *visibleOrdinal != variant.ordinal) {
+                result.push_back(QStringLiteral("event-ground:%1:%2")
+                    .arg(group.key.entryTableIndex).arg(variant.ordinal));
+            }
+        }
+    }
+    result.sort();
+    return result;
+}
+
+QStringList currentEventGroundHiddenIds(const FieldSceneWidget& widget) {
+    QStringList result{};
+    for (const auto& id : widget.hiddenBatchIds()) {
+        if (id.startsWith(QStringLiteral("event-ground:"))) result.push_back(id);
+    }
+    result.sort();
+    return result;
+}
+
+} // namespace
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
@@ -185,8 +223,12 @@ void MainWindow::buildUi() {
         this, &MainWindow::onFieldChanged);
     connect(fieldScene_, &FieldSceneWidget::visibilityChanged,
         this, &MainWindow::onResourceVisibilityChanged);
-    connect(fieldScene_, &FieldSceneWidget::sceneBatchSelectionChanged,
-        this, &MainWindow::onSceneBatchSelectionChanged);
+    connect(fieldScene_, &FieldSceneWidget::groundEntrySelectionChanged,
+        this, &MainWindow::onGroundEntrySelectionChanged);
+    connect(fieldScene_, &FieldSceneWidget::rawEventGroundRequested,
+        this, &MainWindow::onRawEventGroundRequested);
+    connect(fieldScene_, &FieldSceneWidget::eventGroundPresetRequested,
+        this, &MainWindow::onEventGroundPresetRequested);
     connect(fieldScene_, &FieldSceneWidget::contextOpacityChanged,
         this, &MainWindow::onContextOpacityChanged);
     connect(fieldScene_, &FieldSceneWidget::rebaseRequested,
@@ -433,7 +475,7 @@ void MainWindow::applyDocument() {
     appendDiagnostics(workspace_.restoreFieldPatch(*document), false);
     viewportController_->setScene(&document->scene);
     groundMetadata_->clear();
-    fieldScene_->setScene(&document->scene);
+    fieldScene_->setScene(&document->scene, document->eventGroundPresets);
     restoreDocumentState();
     encounterEditor_->showTable(document,
         encounterEditor_->currentTableIndex() < 0
@@ -462,12 +504,39 @@ void MainWindow::onResourceVisibilityChanged(
     scheduleCheckpoint();
 }
 
-void MainWindow::onSceneBatchSelectionChanged(const qint64 sceneBatchIndex) {
+void MainWindow::onGroundEntrySelectionChanged(const qint64 entryTableIndex) {
     groundMetadata_->clear();
-    if (sceneBatchIndex < 0) return;
-    const auto tblId = session_.groundTblIdForBatch(
-        static_cast<std::size_t>(sceneBatchIndex));
+    if (entryTableIndex < 0) return;
+    const auto tblId = session_.groundTblIdForEntry(
+        static_cast<std::size_t>(entryTableIndex));
     if (tblId.has_value()) groundMetadata_->setTblId(*tblId);
+}
+
+void MainWindow::onRawEventGroundRequested() {
+    const auto* document = session_.document();
+    if (document == nullptr) return;
+    auto visibility = fieldScene_->visibility();
+    skewer::core::applyRawEventGroundVisibility(document->scene, visibility);
+    fieldScene_->setVisibility(visibility);
+    fieldScene_->setEventGroundDisplayMode(EventGroundDisplayMode::Raw);
+    viewportController_->setVisibility(visibility);
+    scheduleCheckpoint();
+}
+
+void MainWindow::onEventGroundPresetRequested(const QString& presetId) {
+    const auto* document = session_.document();
+    if (document == nullptr) return;
+    const auto found = std::find_if(document->eventGroundPresets.begin(),
+        document->eventGroundPresets.end(), [&presetId](const auto& preset) {
+            return QString::fromStdString(preset.id) == presetId;
+        });
+    if (found == document->eventGroundPresets.end()) return;
+    auto visibility = fieldScene_->visibility();
+    skewer::core::applyEventGroundPresetVisibility(document->scene, *found, visibility);
+    fieldScene_->setVisibility(visibility);
+    fieldScene_->setEventGroundDisplayMode(EventGroundDisplayMode::Preset, presetId);
+    viewportController_->setVisibility(visibility);
+    scheduleCheckpoint();
 }
 
 void MainWindow::onContextOpacityChanged(const int percent) {
@@ -755,7 +824,7 @@ void MainWindow::refreshAlxFieldDiagnostics() {
 void MainWindow::frameAll() {
     const auto* document = session_.document();
     if (document == nullptr) return;
-    viewportController_->frameAll(document->scene.extent);
+    viewportController_->frameAll(document->scene.bounds);
     scheduleCheckpoint();
 }
 
@@ -782,7 +851,35 @@ void MainWindow::restoreDocumentState() {
         state.orbitYaw,
         state.orbitPitch });
     fieldScene_->restoreHiddenBatches(state.hiddenBatches);
-    viewportController_->setVisibility(fieldScene_->visibility());
+    const auto restoredVisibility = fieldScene_->visibility();
+    const auto restoredEventGroundHidden = currentEventGroundHiddenIds(*fieldScene_);
+    bool modeRestored = false;
+    if (state.eventGroundMode == QStringLiteral("preset")) {
+        const auto found = std::find_if(document->eventGroundPresets.begin(),
+            document->eventGroundPresets.end(), [&state](const auto& preset) {
+                return QString::fromStdString(preset.id) == state.eventGroundPresetId;
+            });
+        if (found != document->eventGroundPresets.end()) {
+            if (restoredEventGroundHidden == eventGroundHiddenIds(document->scene, &*found)) {
+                fieldScene_->setEventGroundDisplayMode(
+                    EventGroundDisplayMode::Preset, state.eventGroundPresetId);
+                modeRestored = true;
+            }
+        }
+        if (!modeRestored) {
+            appendDiagnostics({ {
+                skewer::core::DiagnosticSeverity::Warning,
+                "The saved event-ground preset is stale; exact visibility was restored as Custom.",
+                document->assets.mldPath } }, false);
+        }
+    } else if (state.eventGroundMode == QStringLiteral("raw")) {
+        if (restoredEventGroundHidden.empty()) {
+            fieldScene_->setEventGroundDisplayMode(EventGroundDisplayMode::Raw);
+            modeRestored = true;
+        }
+    }
+    if (!modeRestored) fieldScene_->setEventGroundDisplayMode(EventGroundDisplayMode::Custom);
+    viewportController_->setVisibility(restoredVisibility);
     viewportController_->restoreSelection(state.selection);
     workspace_.clearStartupState();
 }
@@ -813,6 +910,18 @@ WorkspaceState MainWindow::captureState() const {
     state.orbitYaw = camera.yaw;
     state.orbitPitch = camera.pitch;
     state.hiddenBatches = fieldScene_->hiddenBatchIds();
+    switch (fieldScene_->eventGroundDisplayMode()) {
+    case EventGroundDisplayMode::Raw:
+        state.eventGroundMode = QStringLiteral("raw");
+        break;
+    case EventGroundDisplayMode::Preset:
+        state.eventGroundMode = QStringLiteral("preset");
+        state.eventGroundPresetId = fieldScene_->selectedEventGroundPresetId();
+        break;
+    case EventGroundDisplayMode::Custom:
+        state.eventGroundMode = QStringLiteral("custom");
+        break;
+    }
     state.selection.assign(
         viewportController_->selection().begin(),
         viewportController_->selection().end());

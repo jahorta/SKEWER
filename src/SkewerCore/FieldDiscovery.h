@@ -20,12 +20,14 @@ struct FieldAssetPair {
     std::string stem{};
     std::filesystem::path ectPath{};
     std::filesystem::path mldPath{};
+    std::optional<std::filesystem::path> sctPath{};
 };
 
 struct FieldCatalogEntry {
     std::string stem{};
     std::filesystem::path ectPath{};
     std::optional<std::filesystem::path> mldPath{};
+    std::optional<std::filesystem::path> sctPath{};
     FieldAvailability availability = FieldAvailability::MissingMld;
     std::string unavailableReason{};
 
@@ -37,7 +39,7 @@ struct FieldCatalogEntry {
         if (!isAvailable()) {
             return std::nullopt;
         }
-        return FieldAssetPair{ stem, ectPath, *mldPath };
+        return FieldAssetPair{ stem, ectPath, *mldPath, sctPath };
     }
 };
 

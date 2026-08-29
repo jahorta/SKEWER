@@ -45,7 +45,9 @@ private slots:
     void onFieldLoadFinished(bool success);
     void onAlxLoadFinished(bool success);
     void onResourceVisibilityChanged(const std::vector<std::uint8_t>& visibility);
-    void onSceneBatchSelectionChanged(qint64 sceneBatchIndex);
+    void onGroundEntrySelectionChanged(qint64 entryTableIndex);
+    void onRawEventGroundRequested();
+    void onEventGroundPresetRequested(const QString& presetId);
     void onContextOpacityChanged(int percent);
     void onTableChanged(int tableIndex);
     void updateInspector();

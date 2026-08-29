@@ -189,14 +189,7 @@ void mergeBounds(SceneBounds& destination, const SceneBounds& source) {
     return result;
 }
 
-struct ResourceReference {
-    std::uint32_t address = 0;
-    std::optional<std::size_t> entryTableIndex{};
-    Matrix4 entryMatrix = identityMatrix();
-    std::string role{};
-};
-
-void appendMesh(
+std::optional<std::size_t> appendMesh(
     SceneModel& scene,
     const spice::mld::model::MeshData& mesh,
     const Matrix4& matrix,
@@ -244,7 +237,44 @@ void appendMesh(
         scene.triangles.push_back(std::move(triangle));
         batch.triangleIndices.push_back(globalIndex);
     }
-    if (!batch.triangleIndices.empty()) scene.batches.push_back(std::move(batch));
+    if (batch.triangleIndices.empty()) return std::nullopt;
+    scene.batches.push_back(std::move(batch));
+    return scene.batches.size() - 1U;
+}
+
+[[nodiscard]] std::vector<std::size_t> appendResource(
+    SceneModel& scene,
+    const spice::mld::model::MldGroundResource& resource,
+    const Matrix4& entryMatrix,
+    const std::optional<std::size_t> entryTableIndex,
+    const SceneReferenceRole referenceRole,
+    const std::optional<std::size_t> groundVariantOrdinal,
+    const std::string& labelSuffix,
+    std::vector<Diagnostic>& diagnostics) {
+    std::vector<std::size_t> batches{};
+    const auto address = resource.sourceAddress;
+    if (resource.grnd.has_value()) {
+        const auto batch = appendMesh(scene, resource.grnd->mesh, entryMatrix,
+            RenderInstanceKey{ SceneResourceKind::Grnd, address, std::nullopt, entryTableIndex,
+                referenceRole, groundVariantOrdinal },
+            "GRND " + hexAddress(address) + labelSuffix, diagnostics);
+        if (batch.has_value()) batches.push_back(*batch);
+    }
+    if (resource.gobj.has_value()) {
+        const auto matrices = nodeMatrices(*resource.gobj, address, diagnostics);
+        for (std::size_t nodeIndex = 0; nodeIndex < resource.gobj->nodes.size(); ++nodeIndex) {
+            const auto& node = resource.gobj->nodes[nodeIndex];
+            if (node.streamMesh.indices.empty()) continue;
+            const auto batch = appendMesh(scene, node.streamMesh,
+                multiply(entryMatrix, matrices[nodeIndex]),
+                RenderInstanceKey{ SceneResourceKind::Gobj, address, nodeIndex, entryTableIndex,
+                    referenceRole, groundVariantOrdinal },
+                "GOBJ " + hexAddress(address) + " node=" + std::to_string(nodeIndex) + labelSuffix,
+                diagnostics);
+            if (batch.has_value()) batches.push_back(*batch);
+        }
+    }
+    return batches;
 }
 
 
@@ -256,6 +286,18 @@ void appendMesh(
         return static_cast<char>(std::tolower(character));
     });
     return value;
+}
+
+[[nodiscard]] const spice::mld::model::MldGroundResource* decodedGroundResource(
+    const spice::mld::model::MldFile& file,
+    const std::uint32_t address) {
+    if (address == 0U) return nullptr;
+    const auto found = file.groundResources.find(address);
+    if (found == file.groundResources.end() ||
+        found->second.grnd.has_value() == found->second.gobj.has_value()) {
+        return nullptr;
+    }
+    return &found->second;
 }
 
 [[nodiscard]] std::optional<ContextObjectKind> contextKind(const std::string& functionName) {
@@ -393,6 +435,74 @@ std::uint8_t decodeEncounterSelector(const std::uint16_t rawThirdWord) noexcept 
     return static_cast<std::uint8_t>((rawLow15 / 10U) % 10U);
 }
 
+float frameDistanceForSceneBounds(
+    const SceneBounds& bounds,
+    const float yawDegrees,
+    const float pitchDegrees,
+    const float aspectRatio,
+    const float verticalFieldOfViewDegrees,
+    const float padding,
+    const float minimumDistance) noexcept {
+    if (!bounds.valid) return minimumDistance;
+
+    constexpr float pi = 3.14159265358979323846F;
+    const auto radians = [](const float degrees) { return degrees * pi / 180.0F; };
+    const auto dot = [](const SceneVec3& left, const SceneVec3& right) {
+        return left.x * right.x + left.y * right.y + left.z * right.z;
+    };
+    const auto crossProduct = [](const SceneVec3& left, const SceneVec3& right) {
+        return SceneVec3{
+            left.y * right.z - left.z * right.y,
+            left.z * right.x - left.x * right.z,
+            left.x * right.y - left.y * right.x,
+        };
+    };
+    const auto normalized = [](const SceneVec3& value) {
+        const auto length = std::sqrt(
+            value.x * value.x + value.y * value.y + value.z * value.z);
+        return length > 0.000001F
+            ? SceneVec3{ value.x / length, value.y / length, value.z / length }
+            : SceneVec3{};
+    };
+
+    const auto yaw = radians(yawDegrees);
+    const auto pitch = radians(std::clamp(pitchDegrees, -89.0F, 89.0F));
+    const auto forward = normalized(SceneVec3{
+        -std::sin(yaw) * std::cos(pitch),
+        std::sin(pitch),
+        -std::cos(yaw) * std::cos(pitch),
+    });
+    const auto right = normalized(crossProduct(forward, { 0.0F, 1.0F, 0.0F }));
+    const auto up = normalized(crossProduct(right, forward));
+    const auto tanVertical = std::tan(radians(std::clamp(
+        verticalFieldOfViewDegrees, 1.0F, 179.0F)) * 0.5F);
+    const auto tanHorizontal = tanVertical * std::max(aspectRatio, 0.01F);
+    const auto padded = std::max(padding, 1.0F);
+    const auto width = bounds.maximum.x - bounds.minimum.x;
+    const auto height = bounds.maximum.y - bounds.minimum.y;
+    const auto depth = bounds.maximum.z - bounds.minimum.z;
+    const auto diagonal = std::sqrt(width * width + height * height + depth * depth);
+    const auto nearSafety = std::max(0.01F, diagonal * 0.01F);
+
+    float distance = std::max(minimumDistance, 0.0F);
+    for (const float x : { bounds.minimum.x, bounds.maximum.x }) {
+        for (const float y : { bounds.minimum.y, bounds.maximum.y }) {
+            for (const float z : { bounds.minimum.z, bounds.maximum.z }) {
+                const SceneVec3 corner{ x, y, z };
+                const auto alongForward = dot(corner, forward);
+                distance = std::max(distance,
+                    padded * std::abs(dot(corner, right)) / tanHorizontal - alongForward);
+                distance = std::max(distance,
+                    padded * std::abs(dot(corner, up)) / tanVertical - alongForward);
+                distance = std::max(distance, 0.01F + nearSafety - alongForward);
+                distance = std::max(distance,
+                    (nearSafety - alongForward) / (1.0F - 0.0001F));
+            }
+        }
+    }
+    return distance;
+}
+
 ContextGeometryModel buildContextGeometry(
     const spice::mld::model::BlenderIrScene& scene,
     std::vector<Diagnostic>& diagnostics) {
@@ -475,56 +585,110 @@ SceneModel buildSceneModel(
     std::vector<Diagnostic>& diagnostics,
     const SceneBuildOptions& options) {
     SceneModel scene{};
-    std::map<std::uint32_t, std::vector<ResourceReference>> references{};
+    std::set<std::uint32_t> referencedAddresses{};
     for (const auto& record : file.entries) {
-        const auto append = [&](const std::shared_ptr<spice::mld::model::U32List>& values, const char* role) {
-            if (!values) return;
-            for (const auto address : values->values) {
-                if (address == 0U || file.groundResources.find(address) == file.groundResources.end()) continue;
-                auto& list = references[address];
-                const auto duplicate = std::find_if(list.begin(), list.end(), [&](const ResourceReference& ref) {
-                    return ref.entryTableIndex == record.entry.tableIndex;
+        const auto entryMatrix = transformMatrix(record.entry.transform);
+        const auto functionName = normalizedFunctionName(record.entry.fxnName);
+        const bool eventGroundFunction = functionName == "ground" || functionName == "walluv";
+        const auto* groundAddresses = record.entry.groundAddresses == nullptr
+            ? nullptr : &record.entry.groundAddresses->values;
+        const bool hasValidGroundResource = groundAddresses != nullptr &&
+            std::any_of(groundAddresses->begin(), groundAddresses->end(),
+                [&](const std::uint32_t address) {
+                    return decodedGroundResource(file, address) != nullptr;
                 });
-                if (duplicate == list.end()) {
-                    list.push_back(ResourceReference{ address, record.entry.tableIndex,
-                        transformMatrix(record.entry.transform), role });
-                } else if (duplicate->role.find(role) == std::string::npos) {
-                    duplicate->role += std::string("+") + role;
+
+        if (eventGroundFunction && hasValidGroundResource) {
+            EventGroundGroup group{};
+            group.key.entryTableIndex = record.entry.tableIndex;
+            group.entryId = record.entry.entryId;
+            group.tblId = record.entry.tblId;
+            group.functionName = functionName;
+            for (std::size_t ordinal = 0; ordinal < groundAddresses->size(); ++ordinal) {
+                const auto address = (*groundAddresses)[ordinal];
+                EventGroundVariant variant{};
+                variant.ordinal = ordinal;
+                variant.resourceAddress = address;
+                if (address == 0U) {
+                    diagnostics.push_back({ DiagnosticSeverity::Warning,
+                        "Event-ground entry=" + std::to_string(record.entry.tableIndex) +
+                            " contains a zero resource address at ordinal " + std::to_string(ordinal) + "." });
+                } else if (const auto found = file.groundResources.find(address);
+                    found == file.groundResources.end()) {
+                    diagnostics.push_back({ DiagnosticSeverity::Warning,
+                        "Event-ground entry=" + std::to_string(record.entry.tableIndex) +
+                            " references undecoded resource " + hexAddress(address) + " at ordinal " +
+                            std::to_string(ordinal) + "." });
+                } else if (found->second.grnd.has_value() == found->second.gobj.has_value()) {
+                    diagnostics.push_back({ DiagnosticSeverity::Warning,
+                        "Event-ground resource " + hexAddress(address) +
+                            " does not decode as exactly one GRND or GOBJ resource." });
+                } else {
+                    referencedAddresses.insert(address);
+                    variant.resourceKind = found->second.grnd.has_value()
+                        ? SceneResourceKind::Grnd : SceneResourceKind::Gobj;
+                    variant.batchIndices = appendResource(scene, found->second, entryMatrix,
+                        record.entry.tableIndex, SceneReferenceRole::EventGround, ordinal,
+                        " entry=" + std::to_string(record.entry.tableIndex) +
+                            " variant=" + std::to_string(ordinal), diagnostics);
                 }
+                group.variants.push_back(std::move(variant));
             }
-        };
-        append(record.entry.groundAddresses, "ground");
-        append(record.entry.objectAddresses, "object");
+            scene.eventGroundGroups.push_back(std::move(group));
+        } else if (!eventGroundFunction && hasValidGroundResource) {
+            OtherGroundGroup group{};
+            group.entryTableIndex = record.entry.tableIndex;
+            group.entryId = record.entry.entryId;
+            group.tblId = record.entry.tblId;
+            group.functionName = functionName;
+            for (std::size_t ordinal = 0; ordinal < groundAddresses->size(); ++ordinal) {
+                const auto address = (*groundAddresses)[ordinal];
+                const auto* resource = decodedGroundResource(file, address);
+                if (resource == nullptr) {
+                    if (address != 0U) {
+                        diagnostics.push_back({ DiagnosticSeverity::Warning,
+                            "Other ground entry=" + std::to_string(record.entry.tableIndex) +
+                                " references invalid or undecoded resource " + hexAddress(address) +
+                                " at ordinal " + std::to_string(ordinal) + "." });
+                    }
+                    continue;
+                }
+                referencedAddresses.insert(address);
+                OtherGroundResource item{};
+                item.ordinal = ordinal;
+                item.resourceAddress = address;
+                item.resourceKind = resource->grnd.has_value()
+                    ? SceneResourceKind::Grnd : SceneResourceKind::Gobj;
+                item.batchIndices = appendResource(scene, *resource, entryMatrix,
+                    record.entry.tableIndex, SceneReferenceRole::OtherGround, ordinal,
+                    " entry=" + std::to_string(record.entry.tableIndex) +
+                        " other-ground=" + std::to_string(ordinal), diagnostics);
+                group.resources.push_back(std::move(item));
+            }
+            scene.otherGroundGroups.push_back(std::move(group));
+        }
+
+        if (record.entry.objectAddresses) {
+            std::set<std::uint32_t> appendedForEntry{};
+            for (const auto address : record.entry.objectAddresses->values) {
+                if (address == 0U || !appendedForEntry.insert(address).second) continue;
+                const auto found = file.groundResources.find(address);
+                if (found == file.groundResources.end()) continue;
+                referencedAddresses.insert(address);
+                (void)appendResource(scene, found->second, entryMatrix, record.entry.tableIndex,
+                    SceneReferenceRole::OrdinaryObject, std::nullopt,
+                    " entry=" + std::to_string(record.entry.tableIndex) + " object", diagnostics);
+            }
+        }
     }
 
     for (const auto& [address, resource] : file.groundResources) {
-        auto resourceRefs = references[address];
-        if (resourceRefs.empty()) {
-            resourceRefs.push_back(ResourceReference{ address, std::nullopt, identityMatrix(), "unreferenced" });
-            diagnostics.push_back({ DiagnosticSeverity::Warning,
-                "Decoded " + resource.tag + " resource " + hexAddress(address) + " is unreferenced; rendered at identity." });
-        }
-        for (const auto& reference : resourceRefs) {
-            const auto entrySuffix = reference.entryTableIndex.has_value()
-                ? " entry=" + std::to_string(*reference.entryTableIndex)
-                : " unreferenced";
-            if (resource.grnd.has_value()) {
-                appendMesh(scene, resource.grnd->mesh, reference.entryMatrix,
-                    RenderInstanceKey{ SceneResourceKind::Grnd, address, std::nullopt, reference.entryTableIndex },
-                    "GRND " + hexAddress(address) + entrySuffix, diagnostics);
-            }
-            if (resource.gobj.has_value()) {
-                const auto matrices = nodeMatrices(*resource.gobj, address, diagnostics);
-                for (std::size_t nodeIndex = 0; nodeIndex < resource.gobj->nodes.size(); ++nodeIndex) {
-                    const auto& node = resource.gobj->nodes[nodeIndex];
-                    if (node.streamMesh.indices.empty()) continue;
-                    appendMesh(scene, node.streamMesh, multiply(reference.entryMatrix, matrices[nodeIndex]),
-                        RenderInstanceKey{ SceneResourceKind::Gobj, address, nodeIndex, reference.entryTableIndex },
-                        "GOBJ " + hexAddress(address) + " node=" + std::to_string(nodeIndex) + entrySuffix,
-                        diagnostics);
-                }
-            }
-        }
+        if (referencedAddresses.contains(address)) continue;
+        diagnostics.push_back({ DiagnosticSeverity::Warning,
+            "Decoded " + resource.tag + " resource " + hexAddress(address) +
+                " is unreferenced; rendered at identity." });
+        (void)appendResource(scene, resource, identityMatrix(), std::nullopt,
+            SceneReferenceRole::Unreferenced, std::nullopt, " unreferenced", diagnostics);
     }
 
     if (!scene.bounds.valid) {

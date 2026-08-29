@@ -3,6 +3,7 @@
 #include "SPICE/Compression/Aklz.h"
 #include "SPICE/SpiceEct/EctParser.h"
 #include "SPICE/SpiceMLD/Parsing/MldParser.h"
+#include "SPICE/SpiceSCT/SctParser.h"
 
 #include <algorithm>
 #include <fstream>
@@ -17,16 +18,17 @@ namespace {
 
 [[nodiscard]] std::optional<std::vector<std::uint8_t>> readBinary(
     const std::filesystem::path& path,
-    std::vector<Diagnostic>& diagnostics) {
+    std::vector<Diagnostic>& diagnostics,
+    const DiagnosticSeverity failureSeverity = DiagnosticSeverity::Error) {
     std::ifstream input(path, std::ios::binary);
     if (!input) {
-        diagnostics.push_back({ DiagnosticSeverity::Error, "Could not open the file for reading.", path });
+        diagnostics.push_back({ failureSeverity, "Could not open the file for reading.", path });
         return std::nullopt;
     }
     input.seekg(0, std::ios::end);
     const auto length = input.tellg();
     if (length < 0) {
-        diagnostics.push_back({ DiagnosticSeverity::Error, "Could not determine the file size.", path });
+        diagnostics.push_back({ failureSeverity, "Could not determine the file size.", path });
         return std::nullopt;
     }
     input.seekg(0, std::ios::beg);
@@ -35,7 +37,7 @@ namespace {
         input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     }
     if (!input && !bytes.empty()) {
-        diagnostics.push_back({ DiagnosticSeverity::Error, "The file could not be read completely.", path });
+        diagnostics.push_back({ failureSeverity, "The file could not be read completely.", path });
         return std::nullopt;
     }
     return bytes;
@@ -131,6 +133,32 @@ FieldLoadResult FieldLoader::load(const FieldAssetPair& assets) {
     document.ect = std::move(*ectResult.file);
     document.workingEct = document.ect;
     document.scene = std::move(scene);
+
+    if (assets.sctPath.has_value()) {
+        const auto sctBytes = readBinary(*assets.sctPath, result.diagnostics, DiagnosticSeverity::Warning);
+        if (sctBytes.has_value()) {
+            const auto parsedSct = spice::sct::SctParser{}.parse(
+                std::span<const std::uint8_t>(*sctBytes), assets.sctPath->string());
+            for (const auto& diagnostic : parsedSct.diagnostics) {
+                result.diagnostics.push_back({ parsedSct.parseOk
+                        ? DiagnosticSeverity::Info : DiagnosticSeverity::Warning,
+                    "SCT: " + diagnostic.message + " (offset " + std::to_string(diagnostic.offset) + ")",
+                    *assets.sctPath });
+            }
+            if (parsedSct.parseOk) {
+                auto presets = buildEventGroundPresets(document.scene.eventGroundGroups, parsedSct);
+                document.eventGroundPresets = std::move(presets.presets);
+                for (auto& diagnostic : presets.diagnostics) {
+                    diagnostic.path = *assets.sctPath;
+                    result.diagnostics.push_back(std::move(diagnostic));
+                }
+            } else {
+                result.diagnostics.push_back({ DiagnosticSeverity::Warning,
+                    "The paired SCT could not be parsed; field-state presets are unavailable.",
+                    *assets.sctPath });
+            }
+        }
+    }
     document.diagnostics = result.diagnostics;
     const auto malformed = std::find_if(document.scene.triangles.begin(), document.scene.triangles.end(),
         [](const SceneTriangle& triangle) { return triangle.selector > 8U; });

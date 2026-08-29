@@ -125,6 +125,7 @@ FieldDiscoveryResult FieldDiscovery::discover(const std::filesystem::path& selec
 
     std::map<std::string, std::vector<std::filesystem::path>> ectByStem{};
     std::map<std::string, std::vector<std::filesystem::path>> mldByStem{};
+    std::map<std::string, std::vector<std::filesystem::path>> sctByStem{};
     std::filesystem::directory_iterator childIt(*result.fieldDirectory, options, ec);
     while (!ec && childIt != std::filesystem::directory_iterator{}) {
         const auto entry = *childIt;
@@ -139,6 +140,8 @@ FieldDiscoveryResult FieldDiscovery::discover(const std::filesystem::path& selec
                 }
             } else if (extension == ".mld") {
                 mldByStem[stem].push_back(entry.path());
+            } else if (extension == ".sct") {
+                sctByStem[stem].push_back(entry.path());
             }
         }
         childIt.increment(ec);
@@ -171,6 +174,20 @@ FieldDiscoveryResult FieldDiscovery::discover(const std::filesystem::path& selec
                 field.unavailableReason = "Area 99 support is deferred.";
             } else {
                 field.availability = FieldAvailability::Available;
+            }
+        }
+        if (stem.size() > 1U && stem.front() == 'a') {
+            const auto expectedSctStem = "me" + stem.substr(1U);
+            const auto sctFound = sctByStem.find(expectedSctStem);
+            if (sctFound != sctByStem.end()) {
+                if (sctFound->second.size() == 1U) {
+                    field.sctPath = sctFound->second.front();
+                } else {
+                    result.diagnostics.push_back({ DiagnosticSeverity::Warning,
+                        "More than one case-insensitive SCT matches field " + field.stem +
+                            "; state presets are unavailable for this field.",
+                        *result.fieldDirectory });
+                }
             }
         }
         result.fields.push_back(std::move(field));

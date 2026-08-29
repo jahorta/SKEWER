@@ -25,6 +25,7 @@
   <PropertyGroup><OutDir>$(SolutionDir)bin\$(Platform)\$(Configuration)\</OutDir><IntDir>$(SolutionDir)obj\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir></PropertyGroup>
   <ItemGroup>
     <ClCompile Include="AlxEnrichment.cpp" />
+    <ClCompile Include="EventGround.cpp" />
     <ClCompile Include="ExportService.cpp" />
     <ClCompile Include="FieldDiscovery.cpp" />
     <ClCompile Include="FieldDocument.cpp" />
@@ -36,6 +37,7 @@
   <ItemGroup>
     <ClInclude Include="AlxEnrichment.h" />
     <ClInclude Include="Diagnostics.h" />
+    <ClInclude Include="EventGround.h" />
     <ClInclude Include="ExportService.h" />
     <ClInclude Include="FieldDiscovery.h" />
     <ClInclude Include="FieldDocument.h" />
@@ -50,6 +52,7 @@
     <ProjectReference Include="..\..\SPICE\Compression\Compression.vcxproj"><Project>{4F68E37C-185F-4DE8-A4D7-647E6F3659C4}</Project></ProjectReference>
     <ProjectReference Include="..\..\SPICE\SpiceEct\SpiceEct.vcxproj"><Project>{81EF38D9-DF34-427B-A78A-73E38A14DAD8}</Project></ProjectReference>
     <ProjectReference Include="..\..\SPICE\SpiceMLD\SpiceMLD.vcxproj"><Project>{C44D37F8-61F5-4A1C-B983-16D79FBC9954}</Project></ProjectReference>
+    <ProjectReference Include="..\..\SPICE\SpiceSCT\SpiceSCT.vcxproj"><Project>{8EF58CAF-3DFA-46B9-9197-FE71052A15EB}</Project></ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

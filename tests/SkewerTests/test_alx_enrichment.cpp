@@ -64,6 +64,13 @@ using spice::trade::alx::LocalizedName;
     return {};
 }
 
+[[nodiscard]] std::filesystem::path privateAlxCorpusRoot() {
+    const auto root = repositoryRoot();
+    return root.empty()
+        ? std::filesystem::path{}
+        : root / "SPICE/SpiceTrade/Alx v5.0.0 corpuses";
+}
+
 } // namespace
 
 TEST(AlxEnrichment, UsesDreamcastFilterConvention) {
@@ -176,10 +183,11 @@ TEST(AlxEnrichment, DiagnosesCanonicalDuplicatesAndNameDisagreement) {
     EXPECT_TRUE(hasMessage(diagnostics, "more than one canonical"));
 }
 
-TEST(AlxEnrichment, LoadsCommittedDreamcastLocalesAndOrdinaryGroups) {
-    const auto root = repositoryRoot();
-    if (root.empty()) GTEST_SKIP() << "Repository root is unavailable.";
-    const auto corpora = root / "SPICE/SpiceTrade/Alx v5.0.0 corpuses";
+TEST(AlxEnrichment, LoadsPrivateDreamcastLocalesAndOrdinaryGroupsWhenAvailable) {
+    const auto corpora = privateAlxCorpusRoot();
+    if (!std::filesystem::is_directory(corpora)) {
+        GTEST_SKIP() << "Private ALX 5.0.0 corpus is unavailable.";
+    }
     for (const auto* profile : {
         "2000-08-28-dc-jp-final", "2000-09-18-dc-us-final", "2001-02-19-dc-eu-final" }) {
         const auto loaded = skewer::core::loadAlxDataset(corpora / profile / "disc-1");
@@ -193,10 +201,12 @@ TEST(AlxEnrichment, LoadsCommittedDreamcastLocalesAndOrdinaryGroups) {
 }
 
 TEST(AlxEnrichment, AcceptsGameCubeCorpusWithNonblockingWarning) {
-    const auto root = repositoryRoot();
-    if (root.empty()) GTEST_SKIP() << "Repository root is unavailable.";
-    const auto loaded = skewer::core::loadAlxDataset(root /
-        "SPICE/SpiceTrade/Alx v5.0.0 corpuses/2002-12-19-gc-us-final");
+    const auto corpora = privateAlxCorpusRoot();
+    if (!std::filesystem::is_directory(corpora)) {
+        GTEST_SKIP() << "Private ALX 5.0.0 corpus is unavailable.";
+    }
+    const auto loaded = skewer::core::loadAlxDataset(
+        corpora / "2002-12-19-gc-us-final");
     ASSERT_TRUE(loaded.ok());
     EXPECT_TRUE(loaded.dataset->appearsGameCube());
     EXPECT_TRUE(hasMessage(loaded.diagnostics, "GameCube"));
@@ -207,10 +217,12 @@ TEST(AlxEnrichment, AcceptsGameCubeCorpusWithNonblockingWarning) {
 TEST(AlxEnrichment, ValidatesExtendedDreamcastFieldCorpusWhenAvailable) {
     const std::filesystem::path fieldRoot = LR"(D:\SoADC\SoA(Usa)Disc1Assets\FIELD)";
     if (!std::filesystem::exists(fieldRoot)) GTEST_SKIP() << "Dreamcast FIELD corpus is unavailable.";
-    const auto root = repositoryRoot();
-    ASSERT_FALSE(root.empty());
-    const auto loaded = skewer::core::loadAlxDataset(root /
-        "SPICE/SpiceTrade/Alx v5.0.0 corpuses/2000-09-18-dc-us-final/disc-1");
+    const auto corpora = privateAlxCorpusRoot();
+    if (!std::filesystem::is_directory(corpora)) {
+        GTEST_SKIP() << "Private ALX 5.0.0 corpus is unavailable.";
+    }
+    const auto loaded = skewer::core::loadAlxDataset(
+        corpora / "2000-09-18-dc-us-final/disc-1");
     ASSERT_TRUE(loaded.ok());
     for (const auto* stem : skewer::tests::kOrdinaryDreamcastFieldStems) {
         const auto field = skewer::core::FieldLoader::load({ stem,

@@ -13,6 +13,7 @@ Item {
     property real orbitYaw: 0
     property real orbitPitch: -20
     property real contextOpacity: 0.4
+    readonly property real encounterSortBias: -100
     readonly property real minOrbitDistance: 20
     property bool initialized: false
 
@@ -71,6 +72,8 @@ Item {
             PerspectiveCamera {
                 id: activeCamera
                 position: Qt.vector3d(0, 0, root.orbitDistance)
+                fieldOfView: 60
+                fieldOfViewOrientation: PerspectiveCamera.Vertical
                 clipNear: Math.max(0.01, root.orbitDistance * 0.0001)
                 clipFar: Math.max(100000, root.orbitDistance * 100)
             }
@@ -85,6 +88,7 @@ Item {
                     ? root.sceneMeshes[index] : ({})
                 visible: mesh.visible !== false
                 opacity: mesh.context === true ? root.contextOpacity : 1.0
+                depthBias: mesh.context === true ? 0 : root.encounterSortBias
                 geometry: mesh.geometry
                 materials: DefaultMaterial {
                     vertexColorsEnabled: true

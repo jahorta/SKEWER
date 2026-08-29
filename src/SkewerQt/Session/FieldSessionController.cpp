@@ -183,20 +183,12 @@ const skewer::core::FieldDocument* FieldSessionController::document() const noex
     return document_.get();
 }
 
-std::optional<std::int32_t> FieldSessionController::groundTblIdForBatch(
-    const std::size_t sceneBatchIndex) const {
-    if (document_ == nullptr || sceneBatchIndex >= document_->scene.batches.size()) {
-        return std::nullopt;
-    }
-    const auto& batch = document_->scene.batches[sceneBatchIndex];
-    if (batch.instance.kind != skewer::core::SceneResourceKind::Grnd ||
-        !batch.instance.entryTableIndex.has_value()) {
-        return std::nullopt;
-    }
-    const auto entryIndex = *batch.instance.entryTableIndex;
+std::optional<std::int32_t> FieldSessionController::groundTblIdForEntry(
+    const std::size_t entryTableIndex) const {
+    if (document_ == nullptr) return std::nullopt;
     const auto found = std::find_if(document_->mld.entries.begin(), document_->mld.entries.end(),
-        [entryIndex](const auto& record) {
-            return record.entry.tableIndex == entryIndex;
+        [entryTableIndex](const auto& record) {
+            return record.entry.tableIndex == entryTableIndex;
         });
     if (found == document_->mld.entries.end()) return std::nullopt;
     return found->entry.tblId;

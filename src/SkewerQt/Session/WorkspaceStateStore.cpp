@@ -100,7 +100,7 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
     }
     const auto root = document.object();
     const auto schemaVersion = root.value(QStringLiteral("schema_version")).toInt();
-    if (schemaVersion < 1 || schemaVersion > 5) {
+    if (schemaVersion < 1 || schemaVersion > 6) {
         error_ = QStringLiteral("Unsupported workspace schema version.");
         return std::nullopt;
     }
@@ -125,6 +125,16 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
     state.orbitPitch = static_cast<float>(camera.value(QStringLiteral("pitch")).toDouble(-20.0));
     for (const auto value : root.value(QStringLiteral("hidden_batches")).toArray()) {
         state.hiddenBatches.push_back(value.toString());
+    }
+    if (schemaVersion >= 6) {
+        const auto mode = root.value(QStringLiteral("event_ground_mode")).toString();
+        state.eventGroundMode = mode == QStringLiteral("preset") ||
+            mode == QStringLiteral("custom") ? mode : QStringLiteral("raw");
+        state.eventGroundPresetId = state.eventGroundMode == QStringLiteral("preset")
+            ? root.value(QStringLiteral("event_ground_preset_id")).toString() : QString{};
+    } else {
+        state.eventGroundMode = state.hiddenBatches.empty()
+            ? QStringLiteral("raw") : QStringLiteral("custom");
     }
     for (const auto value : root.value(QStringLiteral("selection")).toArray()) {
         const auto key = keyFromJson(value.toObject());
@@ -155,7 +165,7 @@ bool WorkspaceStateStore::save(const WorkspaceState& state) {
     for (const auto& key : state.selection) selection.push_back(keyToJson(key));
 
     QJsonObject root{};
-    root.insert(QStringLiteral("schema_version"), 5);
+    root.insert(QStringLiteral("schema_version"), 6);
     root.insert(QStringLiteral("game_data_root"), state.gameDataRoot);
     root.insert(QStringLiteral("field_directory"), state.fieldDirectory);
     root.insert(QStringLiteral("alx_data_root"), state.alxDataRoot);
@@ -165,6 +175,10 @@ bool WorkspaceStateStore::save(const WorkspaceState& state) {
     root.insert(QStringLiteral("context_opacity_percent"), state.contextOpacityPercent);
     root.insert(QStringLiteral("camera"), camera);
     root.insert(QStringLiteral("hidden_batches"), hidden);
+    root.insert(QStringLiteral("event_ground_mode"), state.eventGroundMode);
+    if (state.eventGroundMode == QStringLiteral("preset")) {
+        root.insert(QStringLiteral("event_ground_preset_id"), state.eventGroundPresetId);
+    }
     root.insert(QStringLiteral("selection"), selection);
     root.insert(QStringLiteral("main_window_geometry"),
         QString::fromLatin1(state.mainWindowGeometry.toBase64()));

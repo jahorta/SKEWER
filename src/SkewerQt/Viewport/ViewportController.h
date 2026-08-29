@@ -26,7 +26,7 @@ public:
     void setVisibility(std::vector<std::uint8_t> visibility);
     void setContextOpacity(int percent);
     void setCameraState(const ViewportCameraState& state);
-    void frameAll(float sceneExtent);
+    void frameAll(const skewer::core::SceneBounds& sceneBounds);
     void restoreSelection(std::span<const skewer::core::TriangleKey> selection);
 
     [[nodiscard]] const std::vector<std::uint8_t>& visibility() const noexcept;

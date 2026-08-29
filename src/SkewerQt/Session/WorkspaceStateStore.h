@@ -25,6 +25,8 @@ struct WorkspaceState {
     bool expertMetadata = false;
     int contextOpacityPercent = 40;
     QStringList hiddenBatches{};
+    QString eventGroundMode{ QStringLiteral("raw") };
+    QString eventGroundPresetId{};
     std::vector<skewer::core::TriangleKey> selection{};
     QByteArray mainWindowGeometry{};
     QByteArray mainWindowState{};

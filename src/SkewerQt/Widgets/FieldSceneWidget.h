@@ -19,6 +19,12 @@ class QTreeWidgetItem;
 
 namespace skewer::qt {
 
+enum class EventGroundDisplayMode {
+    Raw,
+    Preset,
+    Custom,
+};
+
 class FieldSceneWidget final : public QWidget {
     Q_OBJECT
 
@@ -31,15 +37,23 @@ public:
     void clearFields();
     void setFieldSelectionEnabled(bool enabled);
 
-    void setScene(const skewer::core::SceneModel* scene);
+    void setScene(
+        const skewer::core::SceneModel* scene,
+        const std::vector<skewer::core::EventGroundPreset>& presets = {});
     void clearScene();
     void setContextOpacityEnabled(bool enabled);
     void setContextOpacity(int percent);
     [[nodiscard]] int contextOpacity() const;
 
     void restoreHiddenBatches(const QStringList& hiddenBatches);
+    void setVisibility(const std::vector<std::uint8_t>& visibility);
     [[nodiscard]] QStringList hiddenBatchIds() const;
     [[nodiscard]] std::vector<std::uint8_t> visibility() const;
+    void setEventGroundDisplayMode(
+        EventGroundDisplayMode mode,
+        const QString& presetId = {});
+    [[nodiscard]] EventGroundDisplayMode eventGroundDisplayMode() const noexcept;
+    [[nodiscard]] QString selectedEventGroundPresetId() const;
 
     void setEncounterBatchModified(const std::vector<std::uint8_t>& modifiedBatches);
     void setRebaseState(bool visible, bool enabled);
@@ -47,7 +61,9 @@ public:
 signals:
     void fieldSelectionRequested(int catalogIndex);
     void visibilityChanged(const std::vector<std::uint8_t>& visibility);
-    void sceneBatchSelectionChanged(qint64 sceneBatchIndex);
+    void groundEntrySelectionChanged(qint64 entryTableIndex);
+    void rawEventGroundRequested();
+    void eventGroundPresetRequested(const QString& presetId);
     void contextOpacityChanged(int percent);
     void rebaseRequested();
 
@@ -55,13 +71,18 @@ private:
     void onResourceItemChanged(QTreeWidgetItem* item, int column);
     void onCurrentResourceChanged(QTreeWidgetItem* current);
     void updateOpacityLabel(int percent);
+    void updateTreeState();
 
     QComboBox* fieldCombo_ = nullptr;
+    QComboBox* fieldStateCombo_ = nullptr;
     QTreeWidget* resourceTree_ = nullptr;
     QSlider* contextOpacitySlider_ = nullptr;
     QLabel* contextOpacityValueLabel_ = nullptr;
     QPushButton* rebaseButton_ = nullptr;
     std::size_t visibilityCount_ = 0U;
+    std::vector<skewer::core::EventGroundPreset> presets_{};
+    EventGroundDisplayMode eventGroundDisplayMode_ = EventGroundDisplayMode::Raw;
+    QString selectedEventGroundPresetId_{};
     bool updating_ = false;
 };
 

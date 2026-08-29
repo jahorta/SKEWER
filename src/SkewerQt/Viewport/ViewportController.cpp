@@ -47,8 +47,8 @@ void ViewportController::setCameraState(const ViewportCameraState& state) {
     viewport_->setCameraState(state);
 }
 
-void ViewportController::frameAll(const float sceneExtent) {
-    viewport_->frameAll(sceneExtent);
+void ViewportController::frameAll(const skewer::core::SceneBounds& sceneBounds) {
+    viewport_->frameAll(sceneBounds);
 }
 
 void ViewportController::restoreSelection(

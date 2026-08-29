@@ -52,8 +52,8 @@ public:
 
     [[nodiscard]] skewer::core::FieldDocument* document() noexcept;
     [[nodiscard]] const skewer::core::FieldDocument* document() const noexcept;
-    [[nodiscard]] std::optional<std::int32_t> groundTblIdForBatch(
-        std::size_t sceneBatchIndex) const;
+    [[nodiscard]] std::optional<std::int32_t> groundTblIdForEntry(
+        std::size_t entryTableIndex) const;
     [[nodiscard]] std::optional<skewer::core::FormationResolution> resolveFormation(
         int tableIndex, int rowIndex) const;
     [[nodiscard]] std::vector<skewer::core::Diagnostic> validateActiveFieldAlx() const;

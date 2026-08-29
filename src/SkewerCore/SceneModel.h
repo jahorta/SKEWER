@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Diagnostics.h"
+#include "EventGround.h"
 #include "TriangleKeys.h"
 
 #include "SPICE/SpiceMLD/Model/BlenderIrModel.h"
@@ -27,16 +28,13 @@ struct SceneBounds {
     bool valid = false;
 };
 
-enum class SceneResourceKind {
-    Grnd,
-    Gobj,
-};
-
 struct RenderInstanceKey {
     SceneResourceKind kind = SceneResourceKind::Grnd;
     std::uint32_t resourceAddress = 0;
     std::optional<std::size_t> nodeIndex{};
     std::optional<std::size_t> entryTableIndex{};
+    SceneReferenceRole referenceRole = SceneReferenceRole::Unreferenced;
+    std::optional<std::size_t> groundVariantOrdinal{};
 
     bool operator==(const RenderInstanceKey&) const = default;
 };
@@ -89,6 +87,8 @@ struct SceneBuildOptions {
 struct SceneModel {
     std::vector<SceneBatch> batches{};
     std::vector<SceneTriangle> triangles{};
+    std::vector<EventGroundGroup> eventGroundGroups{};
+    std::vector<OtherGroundGroup> otherGroundGroups{};
     std::vector<SceneContextBatch> contextBatches{};
     SceneBounds bounds{};
     SceneVec3 worldOrigin{};
@@ -99,6 +99,15 @@ struct SceneModel {
 };
 
 [[nodiscard]] std::uint8_t decodeEncounterSelector(std::uint16_t rawThirdWord) noexcept;
+
+[[nodiscard]] float frameDistanceForSceneBounds(
+    const SceneBounds& bounds,
+    float yawDegrees,
+    float pitchDegrees,
+    float aspectRatio,
+    float verticalFieldOfViewDegrees = 60.0F,
+    float padding = 1.1F,
+    float minimumDistance = 20.0F) noexcept;
 
 [[nodiscard]] ContextGeometryModel buildContextGeometry(
     const spice::mld::model::BlenderIrScene& scene,

@@ -60,6 +60,7 @@ struct FieldDocument {
     spice::ect::EctFile ect{};
     spice::ect::EctFile workingEct{};
     SceneModel scene{};
+    std::vector<EventGroundPreset> eventGroundPresets{};
     std::vector<Diagnostic> diagnostics{};
     bool readOnly = false;
     std::string readOnlyReason{};

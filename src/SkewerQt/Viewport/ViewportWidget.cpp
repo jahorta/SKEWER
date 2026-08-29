@@ -83,12 +83,16 @@ void ViewportWidget::setCameraState(const ViewportCameraState& state) {
     root->setProperty("orbitPitch", cameraState_.pitch);
 }
 
-void ViewportWidget::frameAll(const float sceneExtent) {
-    setCameraState({
-        QVector3D(0.0F, 0.0F, 0.0F),
-        std::max(20.0F, sceneExtent * 1.35F),
-        0.0F,
-        -25.0F });
+void ViewportWidget::frameAll(const skewer::core::SceneBounds& sceneBounds) {
+    auto state = cameraState();
+    const auto aspectRatio = quickView_ != nullptr &&
+        quickView_->width() > 0 && quickView_->height() > 0
+        ? static_cast<float>(quickView_->width()) / static_cast<float>(quickView_->height())
+        : 16.0F / 9.0F;
+    state.center = QVector3D(0.0F, 0.0F, 0.0F);
+    state.distance = skewer::core::frameDistanceForSceneBounds(
+        sceneBounds, state.yaw, state.pitch, aspectRatio);
+    setCameraState(state);
 }
 
 ViewportCameraState ViewportWidget::cameraState() const {
