@@ -3,12 +3,13 @@
 #include "Viewport/ViewportController.h"
 #include "Viewport/ViewportWidget.h"
 #include "Widgets/DiagnosticsWidget.h"
+#include "Widgets/EditReviewDialog.h"
 #include "Widgets/EncounterEditorWidget.h"
 #include "Widgets/FieldSceneWidget.h"
 #include "Widgets/FormationInspectorWidget.h"
-#include "Widgets/GroundMetadataWidget.h"
 #include "Widgets/TriangleInspectorWidget.h"
 #include "Widgets/VisualSettingsDialog.h"
+#include "Widgets/WorkspaceViewWidget.h"
 
 #include "SkewerCore/ExportService.h"
 
@@ -26,6 +27,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSplitter>
 #include <QStatusBar>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -80,9 +82,14 @@ MainWindow::MainWindow(QWidget* parent)
     connectControllers();
 
     if (workspace_.startupState().has_value()) {
-        const auto& settings = workspace_.startupState()->visualSettings;
+        const auto& startupState = *workspace_.startupState();
+        const auto& settings = startupState.visualSettings;
         visualSettingsDialog_->setSettings(settings);
+        visualSettingsDialog_->setContextOpacityPercent(
+            startupState.contextOpacityPercent);
         viewportController_->setVisualSettings(settings);
+        viewportController_->setContextOpacity(
+            visualSettingsDialog_->contextOpacityPercent());
     }
 
     const auto defaultGeometry = saveGeometry();
@@ -97,7 +104,13 @@ MainWindow::MainWindow(QWidget* parent)
             !restoreState(state.mainWindowState, kDockLayoutVersion)) {
             restoreState(defaultDockState, kDockLayoutVersion);
         }
+        if (!state.encounterWorkspaceSplitterState.isEmpty() &&
+            !encounterSplitter_->restoreState(
+                state.encounterWorkspaceSplitterState)) {
+            encounterSplitter_->setSizes({ 300, 600, 350 });
+        }
     }
+    workspaceView_->setDiagnosticsExpanded(false);
 
     if (!workspace_.isWritable()) {
         QTimer::singleShot(0, this, [this]() {
@@ -139,52 +152,7 @@ bool MainWindow::viewerReady() const noexcept {
 }
 
 void MainWindow::buildUi() {
-    auto* openAction = menuBar()->addAction(
-        QStringLiteral("Open Game Data Root..."));
-    connect(openAction, &QAction::triggered,
-        this, &MainWindow::chooseGameDataRoot);
-
-    auto* alxMenu = menuBar()->addMenu(QStringLiteral("ALX"));
-    selectAlxAction_ = alxMenu->addAction(
-        QStringLiteral("Select ALX Data Directory..."));
-    clearAlxAction_ = alxMenu->addAction(QStringLiteral("Clear ALX Data"));
-    clearAlxAction_->setEnabled(false);
-    connect(selectAlxAction_, &QAction::triggered,
-        this, &MainWindow::chooseAlxDataRoot);
-    connect(clearAlxAction_, &QAction::triggered,
-        this, &MainWindow::clearAlxData);
-
-    undoAction_ = menuBar()->addAction(QStringLiteral("Undo"));
-    undoAction_->setShortcut(QKeySequence::Undo);
-    connect(undoAction_, &QAction::triggered, this, &MainWindow::undoEdit);
-    redoAction_ = menuBar()->addAction(QStringLiteral("Redo"));
-    redoAction_->setShortcut(QKeySequence::Redo);
-    connect(redoAction_, &QAction::triggered, this, &MainWindow::redoEdit);
-
-    auto* exportAction = menuBar()->addAction(
-        QStringLiteral("Export Workspace Patches..."));
-    connect(exportAction, &QAction::triggered,
-        this, &MainWindow::exportPatches);
-    auto* frameAction = menuBar()->addAction(QStringLiteral("Frame All"));
-    connect(frameAction, &QAction::triggered, this, &MainWindow::frameAll);
-    auto* visualsMenu = menuBar()->addMenu(QStringLiteral("Visuals"));
-    auto* visualSettingsAction = visualsMenu->addAction(
-        QStringLiteral("Visual Settings..."));
     visualSettingsDialog_ = new VisualSettingsDialog(this);
-    connect(visualSettingsAction, &QAction::triggered, this, [this]() {
-        visualSettingsDialog_->show();
-        visualSettingsDialog_->raise();
-        visualSettingsDialog_->activateWindow();
-    });
-    connect(visualSettingsDialog_, &VisualSettingsDialog::settingsChanged,
-        this, [this]() {
-            viewportController_->setVisualSettings(visualSettingsDialog_->settings());
-            scheduleCheckpoint();
-        });
-    menuBar()->addSeparator();
-    auto* exitAction = menuBar()->addAction(QStringLiteral("Exit"));
-    connect(exitAction, &QAction::triggered, this, &QWidget::close);
-
     fieldScene_ = new FieldSceneWidget(this);
     auto* fieldDock = new QDockWidget(
         QStringLiteral("Field and scene layers"), this);
@@ -194,52 +162,105 @@ void MainWindow::buildUi() {
     addDockWidget(Qt::LeftDockWidgetArea, fieldDock);
 
     triangleInspector_ = new TriangleInspectorWidget(this);
-    auto* triangleDock = new QDockWidget(
-        QStringLiteral("Selected triangles"), this);
-    triangleDock->setObjectName(QStringLiteral("triangleInspectorDock"));
-    triangleDock->setWidget(triangleInspector_);
-    triangleDock->setAllowedAreas(Qt::LeftDockWidgetArea);
-    addDockWidget(Qt::LeftDockWidgetArea, triangleDock);
-    splitDockWidget(fieldDock, triangleDock, Qt::Vertical);
-
-    groundMetadata_ = new GroundMetadataWidget(this);
-    auto* groundDock = new QDockWidget(
-        QStringLiteral("Ground metadata"), this);
-    groundDock->setObjectName(QStringLiteral("groundMetadataDock"));
-    groundDock->setWidget(groundMetadata_);
-    groundDock->setAllowedAreas(Qt::LeftDockWidgetArea);
-    addDockWidget(Qt::LeftDockWidgetArea, groundDock);
-    splitDockWidget(triangleDock, groundDock, Qt::Vertical);
-
     encounterEditor_ = new EncounterEditorWidget(this);
-    auto* ectDock = new QDockWidget(
-        QStringLiteral("ECT encounter tables"), this);
-    ectDock->setObjectName(QStringLiteral("encounterEditorDock"));
-    ectDock->setWidget(encounterEditor_);
-    ectDock->setAllowedAreas(Qt::RightDockWidgetArea);
-    addDockWidget(Qt::RightDockWidgetArea, ectDock);
-
     formationInspector_ = new FormationInspectorWidget(this);
-    auto* formationDock = new QDockWidget(
-        QStringLiteral("ALX formation"), this);
-    formationDock->setObjectName(QStringLiteral("formationInspectorDock"));
-    formationDock->setWidget(formationInspector_);
-    formationDock->setAllowedAreas(Qt::RightDockWidgetArea);
-    addDockWidget(Qt::RightDockWidgetArea, formationDock);
-
-    diagnosticsWidget_ = new DiagnosticsWidget(this);
-    auto* diagnosticsDock = new QDockWidget(
-        QStringLiteral("Import diagnostics"), this);
-    diagnosticsDock->setObjectName(QStringLiteral("diagnosticsDock"));
-    diagnosticsDock->setWidget(diagnosticsWidget_);
-    diagnosticsDock->setAllowedAreas(Qt::BottomDockWidgetArea);
-    addDockWidget(Qt::BottomDockWidgetArea, diagnosticsDock);
+    encounterSplitter_ = new QSplitter(Qt::Horizontal, this);
+    encounterSplitter_->addWidget(triangleInspector_);
+    encounterSplitter_->addWidget(encounterEditor_);
+    encounterSplitter_->addWidget(formationInspector_);
+    encounterSplitter_->setStretchFactor(0, 24);
+    encounterSplitter_->setStretchFactor(1, 48);
+    encounterSplitter_->setStretchFactor(2, 28);
+    encounterSplitter_->setSizes({ 300, 600, 350 });
+    auto* encounterDock = new QDockWidget(
+        QStringLiteral("Encounter Workspace"), this);
+    encounterDock->setObjectName(QStringLiteral("encounterWorkspaceDock"));
+    encounterDock->setWidget(encounterSplitter_);
+    encounterDock->setAllowedAreas(Qt::BottomDockWidgetArea);
+    addDockWidget(Qt::BottomDockWidgetArea, encounterDock);
+    setCorner(Qt::BottomLeftCorner, Qt::LeftDockWidgetArea);
+    setCorner(Qt::BottomRightCorner, Qt::BottomDockWidgetArea);
 
     viewportWidget_ = new ViewportWidget(this);
+    diagnosticsWidget_ = new DiagnosticsWidget(this);
+    workspaceView_ = new WorkspaceViewWidget(
+        viewportWidget_, diagnosticsWidget_, this);
     viewportController_ = new ViewportController(viewportWidget_, this);
-    viewportController_->setContextOpacity(fieldScene_->contextOpacity());
+    viewportController_->setContextOpacity(
+        visualSettingsDialog_->contextOpacityPercent());
     viewportController_->setVisualSettings(visualSettingsDialog_->settings());
-    setCentralWidget(viewportWidget_);
+    setCentralWidget(workspaceView_);
+    connect(viewportWidget_, &ViewportWidget::visualSettingsRequested,
+        this, &MainWindow::showVisualSettingsDialog);
+
+    auto* fileMenu = menuBar()->addMenu(QStringLiteral("File"));
+    auto* openAction = fileMenu->addAction(QStringLiteral("Open Game Data Root..."));
+    connect(openAction, &QAction::triggered, this, &MainWindow::chooseGameDataRoot);
+    fileMenu->addSeparator();
+    auto* exportAction = fileMenu->addAction(
+        QStringLiteral("Export Workspace Patches..."));
+    connect(exportAction, &QAction::triggered, this, &MainWindow::exportPatches);
+    fileMenu->addSeparator();
+    auto* exitAction = fileMenu->addAction(QStringLiteral("Exit"));
+    connect(exitAction, &QAction::triggered, this, &QWidget::close);
+
+    auto* editMenu = menuBar()->addMenu(QStringLiteral("Edit"));
+    undoAction_ = editMenu->addAction(QStringLiteral("Undo"));
+    undoAction_->setShortcut(QKeySequence::Undo);
+    connect(undoAction_, &QAction::triggered, this, &MainWindow::undoEdit);
+    redoAction_ = editMenu->addAction(QStringLiteral("Redo"));
+    redoAction_->setShortcut(QKeySequence::Redo);
+    connect(redoAction_, &QAction::triggered, this, &MainWindow::redoEdit);
+    editMenu->addSeparator();
+    reviewChangesAction_ = editMenu->addAction(
+        QStringLiteral("Review Current Field Changes..."));
+    reviewChangesAction_->setEnabled(false);
+    connect(reviewChangesAction_, &QAction::triggered,
+        this, &MainWindow::showCurrentFieldChanges);
+
+    auto* dataMenu = menuBar()->addMenu(QStringLiteral("Data"));
+    selectAlxAction_ = dataMenu->addAction(
+        QStringLiteral("Select ALX Data Directory..."));
+    clearAlxAction_ = dataMenu->addAction(QStringLiteral("Clear ALX Data"));
+    clearAlxAction_->setEnabled(false);
+    connect(selectAlxAction_, &QAction::triggered,
+        this, &MainWindow::chooseAlxDataRoot);
+    connect(clearAlxAction_, &QAction::triggered,
+        this, &MainWindow::clearAlxData);
+
+    auto* viewMenu = menuBar()->addMenu(QStringLiteral("View"));
+    fieldDock->toggleViewAction()->setText(QStringLiteral("Field and Scene Layers"));
+    encounterDock->toggleViewAction()->setText(QStringLiteral("Encounter Workspace"));
+    viewMenu->addAction(fieldDock->toggleViewAction());
+    viewMenu->addAction(encounterDock->toggleViewAction());
+    diagnosticsAction_ = viewMenu->addAction(QStringLiteral("Diagnostics"));
+    diagnosticsAction_->setCheckable(true);
+    connect(diagnosticsAction_, &QAction::toggled,
+        workspaceView_, &WorkspaceViewWidget::setDiagnosticsExpanded);
+    connect(workspaceView_, &WorkspaceViewWidget::diagnosticsExpandedChanged,
+        diagnosticsAction_, &QAction::setChecked);
+    viewMenu->addSeparator();
+    auto* frameAction = viewMenu->addAction(QStringLiteral("Frame All"));
+    connect(frameAction, &QAction::triggered, this, &MainWindow::frameAll);
+    auto* visualSettingsAction = viewMenu->addAction(
+        QStringLiteral("Visual Settings..."));
+    connect(visualSettingsAction, &QAction::triggered,
+        this, &MainWindow::showVisualSettingsDialog);
+
+    connect(visualSettingsDialog_, &VisualSettingsDialog::settingsChanged,
+        this, [this]() {
+            viewportController_->setVisualSettings(visualSettingsDialog_->settings());
+            viewportController_->setContextOpacity(
+                visualSettingsDialog_->contextOpacityPercent());
+            scheduleCheckpoint();
+        });
+
+    editSummaryButton_ = new QPushButton(this);
+    editSummaryButton_->setFlat(true);
+    editSummaryButton_->setVisible(false);
+    connect(editSummaryButton_, &QPushButton::clicked,
+        this, &MainWindow::showCurrentFieldChanges);
+    statusBar()->addPermanentWidget(editSummaryButton_);
 
     connect(fieldScene_, &FieldSceneWidget::fieldSelectionRequested,
         this, &MainWindow::onFieldChanged);
@@ -251,8 +272,6 @@ void MainWindow::buildUi() {
         this, &MainWindow::onRawEventGroundRequested);
     connect(fieldScene_, &FieldSceneWidget::eventGroundPresetRequested,
         this, &MainWindow::onEventGroundPresetRequested);
-    connect(fieldScene_, &FieldSceneWidget::contextOpacityChanged,
-        this, &MainWindow::onContextOpacityChanged);
     connect(fieldScene_, &FieldSceneWidget::rebaseRequested,
         this, &MainWindow::rebaseConflicts);
     connect(encounterEditor_, &EncounterEditorWidget::tableSelectionChanged,
@@ -274,23 +293,25 @@ void MainWindow::buildUi() {
     setWindowTitle(QStringLiteral(
         "SKEWER - Skies of Arcadia Encounter Editor"));
     resize(1500, 900);
+    resizeDocks({ encounterDock }, { 300 }, Qt::Vertical);
     statusBar()->showMessage(QStringLiteral(
         "Open a Dreamcast game-data root to begin."));
 }
 
 void MainWindow::connectControllers() {
     connect(&session_, &FieldSessionController::diagnosticsProduced,
-        this, &MainWindow::appendDiagnostics);
+        this, &MainWindow::appendFieldDiagnostics);
     connect(&session_, &FieldSessionController::documentCleared,
         this, [this]() {
             viewportController_->setScene(nullptr);
             workspace_.clearActiveFieldState();
             updateInspector();
+            updateEditSummary();
         });
     connect(&session_, &FieldSessionController::discoveryStarted,
         this, [this]() {
-            fieldScene_->setContextOpacityEnabled(false);
             fieldScene_->setFieldSelectionEnabled(false);
+            fieldDiagnostics_.clear();
             alxFieldDiagnostics_.clear();
             renderDiagnostics();
             statusBar()->showMessage(QStringLiteral("Scanning for FIELD..."));
@@ -300,9 +321,9 @@ void MainWindow::connectControllers() {
     connect(&session_, &FieldSessionController::fieldLoadStarted,
         this, [this](const QString& stem) {
             fieldScene_->setFieldSelectionEnabled(false);
-            fieldScene_->setContextOpacityEnabled(false);
+            fieldDiagnostics_.clear();
             fieldScene_->clearScene();
-            groundMetadata_->clear();
+            fieldScene_->clearGroundMetadata();
             alxFieldDiagnostics_.clear();
             renderDiagnostics();
             updateFormationDock();
@@ -315,6 +336,8 @@ void MainWindow::connectControllers() {
         this, [this](const QString& rootPath) {
             selectAlxAction_->setEnabled(false);
             clearAlxAction_->setEnabled(false);
+            alxLoadDiagnostics_.clear();
+            renderDiagnostics();
             formationInspector_->showLoading(rootPath);
         });
     connect(&session_, &FieldSessionController::alxLoadFinished,
@@ -336,14 +359,14 @@ void MainWindow::connectControllers() {
         this, &MainWindow::scheduleCheckpoint);
     connect(viewportController_, &ViewportController::loadDiagnosticsChanged,
         this, [this]() {
-            if (!viewportController_->loadDiagnostics().empty()) {
-                appendDiagnostics(viewportController_->loadDiagnostics(), false);
-            }
+            viewportDiagnostics_ = viewportController_->loadDiagnostics();
+            renderDiagnostics();
         });
     connect(&workspace_, &WorkspaceController::checkpointRequested,
         this, &MainWindow::saveCheckpoint);
     if (!viewportController_->loadDiagnostics().empty()) {
-        appendDiagnostics(viewportController_->loadDiagnostics(), false);
+        viewportDiagnostics_ = viewportController_->loadDiagnostics();
+        renderDiagnostics();
     }
 }
 
@@ -361,7 +384,8 @@ void MainWindow::chooseGameDataRoot() {
         saveCheckpoint();
         std::vector<skewer::core::Diagnostic> diagnostics{};
         const auto patches = workspace_.listPatchStems(diagnostics);
-        appendDiagnostics(diagnostics, false);
+        appendBoundedDiagnostics(workspaceDiagnostics_, diagnostics, false);
+        renderDiagnostics();
         if (!patches.empty()) {
             QMessageBox choice(this);
             choice.setWindowTitle(QStringLiteral("Change FIELD workspace"));
@@ -449,9 +473,9 @@ void MainWindow::onFieldLoadFinished(const bool success) {
     if (!success) {
         statusBar()->showMessage(QStringLiteral("Field import failed."));
         QMessageBox::critical(this, QStringLiteral("Cannot load field"),
-            generalDiagnostics_.empty()
+            fieldDiagnostics_.empty()
                 ? QStringLiteral("The field pair could not be parsed.")
-                : QString::fromStdString(generalDiagnostics_.back().message));
+                : QString::fromStdString(fieldDiagnostics_.back().message));
         return;
     }
     applyDocument();
@@ -489,14 +513,17 @@ void MainWindow::applyDocument() {
     auto* document = session_.document();
     if (document == nullptr) return;
     if (document->readOnly) {
-        appendDiagnostics({ {
+        appendBoundedDiagnostics(fieldDiagnostics_, { {
             skewer::core::DiagnosticSeverity::Error,
             document->readOnlyReason,
             document->assets.mldPath } }, false);
+        renderDiagnostics();
     }
-    appendDiagnostics(workspace_.restoreFieldPatch(*document), false);
+    appendBoundedDiagnostics(workspaceDiagnostics_,
+        workspace_.restoreFieldPatch(*document), true);
+    renderDiagnostics();
     viewportController_->setScene(&document->scene);
-    groundMetadata_->clear();
+    fieldScene_->clearGroundMetadata();
     fieldScene_->setScene(&document->scene, document->eventGroundPresets);
     restoreDocumentState();
     encounterEditor_->showTable(document,
@@ -527,11 +554,11 @@ void MainWindow::onResourceVisibilityChanged(
 }
 
 void MainWindow::onGroundEntrySelectionChanged(const qint64 entryTableIndex) {
-    groundMetadata_->clear();
+    fieldScene_->clearGroundMetadata();
     if (entryTableIndex < 0) return;
     const auto tblId = session_.groundTblIdForEntry(
         static_cast<std::size_t>(entryTableIndex));
-    if (tblId.has_value()) groundMetadata_->setTblId(*tblId);
+    if (tblId.has_value()) fieldScene_->showGroundTblId(*tblId);
 }
 
 void MainWindow::onRawEventGroundRequested() {
@@ -558,11 +585,6 @@ void MainWindow::onEventGroundPresetRequested(const QString& presetId) {
     fieldScene_->setVisibility(visibility);
     fieldScene_->setEventGroundDisplayMode(EventGroundDisplayMode::Preset, presetId);
     viewportController_->setVisibility(visibility);
-    scheduleCheckpoint();
-}
-
-void MainWindow::onContextOpacityChanged(const int percent) {
-    viewportController_->setContextOpacity(percent);
     scheduleCheckpoint();
 }
 
@@ -638,6 +660,7 @@ void MainWindow::updateEditingState() {
             .arg(workspace_.hasPatchContent(document)
                 ? QStringLiteral(" *") : QString{}));
     }
+    updateEditSummary();
 }
 
 void MainWindow::rebaseConflicts() {
@@ -651,12 +674,15 @@ void MainWindow::rebaseConflicts() {
             "Unresolved keys will remain blocked."));
     if (answer != QMessageBox::Yes) return;
     const auto result = workspace_.rebaseConflicts(*document);
-    appendDiagnostics(result.diagnostics, false);
+    appendBoundedDiagnostics(workspaceDiagnostics_, result.diagnostics, true);
+    renderDiagnostics();
     refreshAfterSemanticEdit();
 }
 
 bool MainWindow::exportPatches() {
     saveCheckpoint();
+    exportDiagnostics_.clear();
+    renderDiagnostics();
     const auto& catalog = session_.catalog();
     if (!catalog.fieldDirectory.has_value()) {
         QMessageBox::information(this, QStringLiteral("Nothing to export"),
@@ -666,7 +692,8 @@ bool MainWindow::exportPatches() {
 
     std::vector<skewer::core::Diagnostic> diagnostics{};
     const auto stems = workspace_.listPatchStems(diagnostics);
-    appendDiagnostics(diagnostics, false);
+    appendBoundedDiagnostics(exportDiagnostics_, diagnostics, false);
+    renderDiagnostics();
     if (stems.empty()) {
         QMessageBox::information(this, QStringLiteral("Nothing to export"),
             QStringLiteral("This workspace has no field patches."));
@@ -706,16 +733,18 @@ bool MainWindow::exportPatches() {
         if (list->item(row)->checkState() != Qt::Checked) continue;
         auto loaded = workspace_.loadPatch(
             list->item(row)->text().toStdString());
-        appendDiagnostics(loaded.diagnostics, false);
+        appendBoundedDiagnostics(exportDiagnostics_, loaded.diagnostics, false);
         if (loaded.ok()) patches.push_back(std::move(*loaded.patch));
     }
+    renderDiagnostics();
     if (patches.empty()) return false;
 
     statusBar()->showMessage(
         QStringLiteral("Validating selected patches..."));
     const auto preflight = skewer::core::ExportService::preflight(
         *catalog.fieldDirectory, patches);
-    appendDiagnostics(preflight.diagnostics, false);
+    appendBoundedDiagnostics(exportDiagnostics_, preflight.diagnostics, false);
+    renderDiagnostics();
     if (!preflight.ok()) {
         QMessageBox::critical(this,
             QStringLiteral("Export preflight failed"),
@@ -770,7 +799,8 @@ bool MainWindow::exportPatches() {
 
     const auto published = skewer::core::ExportService::publish(
         preflight, destination);
-    appendDiagnostics(published.diagnostics, false);
+    appendBoundedDiagnostics(exportDiagnostics_, published.diagnostics, false);
+    renderDiagnostics();
     if (!published.ok()) {
         QMessageBox::critical(this,
             QStringLiteral("Export publication failed"),
@@ -850,6 +880,47 @@ void MainWindow::frameAll() {
     scheduleCheckpoint();
 }
 
+void MainWindow::showVisualSettingsDialog() {
+    visualSettingsDialog_->show();
+    visualSettingsDialog_->raise();
+    visualSettingsDialog_->activateWindow();
+}
+
+void MainWindow::showCurrentFieldChanges() {
+    const auto snapshot = workspace_.currentFieldPatchSnapshot(session_.document());
+    if (!snapshot.has_value() || snapshot->patch.empty() ||
+        session_.document() == nullptr) return;
+    EditReviewDialog dialog(*snapshot, *session_.document(), this);
+    dialog.exec();
+}
+
+void MainWindow::updateEditSummary() {
+    const auto snapshot = workspace_.currentFieldPatchSnapshot(session_.document());
+    const bool hasDocument = snapshot.has_value();
+    editSummaryButton_->setVisible(hasDocument);
+    if (!hasDocument) {
+        reviewChangesAction_->setEnabled(false);
+        return;
+    }
+    const auto triangleCount = snapshot->patch.triangleSelectorEdits.size();
+    const auto ectCount = snapshot->patch.ectValueEdits.size();
+    const bool hasChanges = triangleCount > 0U || ectCount > 0U;
+    QString text = hasChanges
+        ? QStringLiteral("%1 triangle edit(s) · %2 ECT edit(s)")
+            .arg(triangleCount).arg(ectCount)
+        : QStringLiteral("No edits");
+    if (!snapshot->conflicts.empty()) {
+        text += QStringLiteral(" · %1 conflict(s)").arg(snapshot->conflicts.size());
+        editSummaryButton_->setStyleSheet(QStringLiteral(
+            "QPushButton { color: #8a5700; font-weight: bold; }"));
+    } else {
+        editSummaryButton_->setStyleSheet(QString{});
+    }
+    editSummaryButton_->setText(text);
+    editSummaryButton_->setEnabled(hasChanges);
+    reviewChangesAction_->setEnabled(hasChanges);
+}
+
 void MainWindow::restoreDocumentState() {
     const auto* document = session_.document();
     if (!workspace_.startupState().has_value() || document == nullptr ||
@@ -864,9 +935,6 @@ void MainWindow::restoreDocumentState() {
     encounterEditor_->restoreTable(
         std::clamp(state.encounterTable, 0, 7));
     triangleInspector_->setExpertMode(state.expertMetadata);
-    fieldScene_->setContextOpacity(
-        std::clamp(state.contextOpacityPercent, 0, 100));
-    viewportController_->setContextOpacity(fieldScene_->contextOpacity());
     viewportController_->setCameraState({
         state.orbitCenter,
         std::max(20.0F, state.orbitDistance),
@@ -889,10 +957,11 @@ void MainWindow::restoreDocumentState() {
             }
         }
         if (!modeRestored) {
-            appendDiagnostics({ {
+            appendBoundedDiagnostics(workspaceDiagnostics_, { {
                 skewer::core::DiagnosticSeverity::Warning,
                 "The saved event-ground preset is stale; exact visibility was restored as Custom.",
                 document->assets.mldPath } }, false);
+            renderDiagnostics();
         }
     } else if (state.eventGroundMode == QStringLiteral("raw")) {
         if (restoredEventGroundHidden.empty()) {
@@ -925,7 +994,7 @@ WorkspaceState MainWindow::captureState() const {
     state.encounterTable = std::max(
         0, encounterEditor_->currentTableIndex());
     state.expertMetadata = triangleInspector_->expertMode();
-    state.contextOpacityPercent = fieldScene_->contextOpacity();
+    state.contextOpacityPercent = visualSettingsDialog_->contextOpacityPercent();
     state.visualSettings = visualSettingsDialog_->settings();
     const auto camera = viewportController_->cameraState();
     state.orbitCenter = camera.center;
@@ -950,6 +1019,7 @@ WorkspaceState MainWindow::captureState() const {
         viewportController_->selection().end());
     state.mainWindowGeometry = saveGeometry();
     state.mainWindowState = saveState(kDockLayoutVersion);
+    state.encounterWorkspaceSplitterState = encounterSplitter_->saveState();
     return state;
 }
 
@@ -958,7 +1028,8 @@ void MainWindow::saveCheckpoint() {
     std::vector<skewer::core::Diagnostic> diagnostics{};
     const auto result = workspace_.checkpoint(
         session_.document(), captureState(), diagnostics);
-    appendDiagnostics(diagnostics, false);
+    appendBoundedDiagnostics(workspaceDiagnostics_, diagnostics, false);
+    renderDiagnostics();
     if (result == WorkspaceCheckpointResult::PatchFailed) {
         statusBar()->showMessage(QStringLiteral(
             "Field patch checkpoint failed; see diagnostics."), 10000);
@@ -969,18 +1040,38 @@ void MainWindow::saveCheckpoint() {
     }
 }
 
-void MainWindow::appendDiagnostics(
+void MainWindow::appendFieldDiagnostics(
     const std::vector<skewer::core::Diagnostic>& diagnostics,
     const bool clearFirst) {
-    if (clearFirst) generalDiagnostics_.clear();
-    generalDiagnostics_.insert(generalDiagnostics_.end(),
-        diagnostics.begin(), diagnostics.end());
+    appendBoundedDiagnostics(fieldDiagnostics_, diagnostics, clearFirst);
     renderDiagnostics();
 }
 
+void MainWindow::appendBoundedDiagnostics(
+    std::vector<skewer::core::Diagnostic>& target,
+    const std::vector<skewer::core::Diagnostic>& diagnostics,
+    const bool clearFirst) {
+    constexpr std::size_t maximumEntries = 2000U;
+    if (clearFirst) target.clear();
+    target.insert(target.end(), diagnostics.begin(), diagnostics.end());
+    if (target.size() > maximumEntries) {
+        target.erase(target.begin(),
+            target.begin() + static_cast<std::ptrdiff_t>(target.size() - maximumEntries));
+    }
+}
+
 void MainWindow::renderDiagnostics() {
-    diagnosticsWidget_->setDiagnostics(
-        generalDiagnostics_, alxLoadDiagnostics_, alxFieldDiagnostics_);
+    diagnosticsWidget_->setDiagnostics({
+        { DiagnosticCategory::FieldImport, QStringLiteral("Field Import"), fieldDiagnostics_ },
+        { DiagnosticCategory::AlxLoad, QStringLiteral("ALX Load"), alxLoadDiagnostics_ },
+        { DiagnosticCategory::AlxFieldValidation,
+            QStringLiteral("ALX Field Validation"), alxFieldDiagnostics_ },
+        { DiagnosticCategory::Viewport, QStringLiteral("Viewport"), viewportDiagnostics_ },
+        { DiagnosticCategory::WorkspacePatch,
+            QStringLiteral("Workspace / Patch"), workspaceDiagnostics_ },
+        { DiagnosticCategory::Export, QStringLiteral("Export"), exportDiagnostics_ },
+    });
+    workspaceView_->setDiagnosticsSummary(diagnosticsWidget_->summary());
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {

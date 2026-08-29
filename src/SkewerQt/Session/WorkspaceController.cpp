@@ -158,6 +158,17 @@ bool WorkspaceController::hasPatchContent(
         !preservedTriangleEdits_.empty() || !preservedEctEdits_.empty();
 }
 
+std::optional<CurrentFieldPatchSnapshot>
+WorkspaceController::currentFieldPatchSnapshot(
+    const skewer::core::FieldDocument* document) const {
+    if (document == nullptr) return std::nullopt;
+    return CurrentFieldPatchSnapshot{
+        skewer::core::makeFieldPatch(
+            *document, preservedTriangleEdits_, preservedEctEdits_),
+        patchConflicts_
+    };
+}
+
 std::vector<std::string> WorkspaceController::listPatchStems(
     std::vector<skewer::core::Diagnostic>& diagnostics) const {
     return patchStore_.listPatchStems(diagnostics);

@@ -5,8 +5,8 @@
 #include <QWidget>
 
 class QLabel;
-class QListWidget;
 class QSpinBox;
+class QTabBar;
 class QTableWidget;
 class QTableWidgetItem;
 
@@ -34,7 +34,7 @@ signals:
 private:
     void onEncounterItemChanged(QTableWidgetItem* item);
 
-    QListWidget* tableList_ = nullptr;
+    QTabBar* tableTabs_ = nullptr;
     QLabel* tableHeader_ = nullptr;
     QSpinBox* stageEditor_ = nullptr;
     QSpinBox* overallRateEditor_ = nullptr;

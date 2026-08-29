@@ -26,6 +26,11 @@ struct WorkspaceRebaseResult {
     std::vector<skewer::core::Diagnostic> diagnostics{};
 };
 
+struct CurrentFieldPatchSnapshot {
+    skewer::core::FieldPatch patch{};
+    std::vector<skewer::core::PatchConflict> conflicts{};
+};
+
 class WorkspaceController final : public QObject {
     Q_OBJECT
 
@@ -55,6 +60,9 @@ public:
     [[nodiscard]] bool hasConflicts() const noexcept;
     [[nodiscard]] bool hasPatchContent(
         const skewer::core::FieldDocument* document) const noexcept;
+    [[nodiscard]] std::optional<CurrentFieldPatchSnapshot>
+        currentFieldPatchSnapshot(
+            const skewer::core::FieldDocument* document) const;
 
     [[nodiscard]] std::vector<std::string> listPatchStems(
         std::vector<skewer::core::Diagnostic>& diagnostics) const;

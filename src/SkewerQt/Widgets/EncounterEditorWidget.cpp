@@ -5,9 +5,9 @@
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QListWidget>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QTabBar>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
@@ -19,12 +19,15 @@ namespace skewer::qt {
 EncounterEditorWidget::EncounterEditorWidget(QWidget* parent)
     : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
-    tableList_ = new QListWidget(this);
+    tableTabs_ = new QTabBar(this);
+    tableTabs_->setExpanding(true);
     for (int index = 0; index < 8; ++index) {
-        tableList_->addItem(QStringLiteral("Selector %1 - Table %2").arg(index + 1).arg(index + 1));
+        tableTabs_->addTab(QString::number(index + 1));
+        tableTabs_->setTabToolTip(index,
+            QStringLiteral("Selector %1 / Table %1").arg(index + 1));
     }
-    tableList_->setCurrentRow(0);
-    layout->addWidget(tableList_);
+    tableTabs_->setCurrentIndex(0);
+    layout->addWidget(tableTabs_);
 
     tableHeader_ = new QLabel(QStringLiteral("No ECT loaded"), this);
     tableHeader_->setWordWrap(true);
@@ -50,8 +53,8 @@ EncounterEditorWidget::EncounterEditorWidget(QWidget* parent)
     encounterTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
     layout->addWidget(encounterTable_, 1);
 
-    connect(tableList_, &QListWidget::currentRowChanged, this, [this](const int row) {
-        if (!updating_) emit tableSelectionChanged(row);
+    connect(tableTabs_, &QTabBar::currentChanged, this, [this](const int index) {
+        if (!updating_) emit tableSelectionChanged(index);
     });
     connect(encounterTable_, &QTableWidget::itemChanged,
         this, &EncounterEditorWidget::onEncounterItemChanged);
@@ -131,13 +134,13 @@ void EncounterEditorWidget::showTable(
 }
 
 void EncounterEditorWidget::selectTable(const int tableIndex) {
-    tableList_->setCurrentRow(std::clamp(tableIndex, 0, 7));
+    tableTabs_->setCurrentIndex(std::clamp(tableIndex, 0, 7));
 }
 
 void EncounterEditorWidget::restoreTable(const int tableIndex) {
-    const QSignalBlocker blocker(tableList_);
+    const QSignalBlocker blocker(tableTabs_);
     updating_ = true;
-    tableList_->setCurrentRow(std::clamp(tableIndex, 0, 7));
+    tableTabs_->setCurrentIndex(std::clamp(tableIndex, 0, 7));
     updating_ = false;
 }
 
@@ -150,7 +153,7 @@ void EncounterEditorWidget::setWritable(const bool writable) {
 }
 
 int EncounterEditorWidget::currentTableIndex() const {
-    return tableList_->currentRow();
+    return tableTabs_->currentIndex();
 }
 
 int EncounterEditorWidget::currentRowIndex() const {

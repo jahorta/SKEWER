@@ -20,6 +20,8 @@ public:
 
     void setSettings(const VisualSettings& settings);
     [[nodiscard]] VisualSettings settings() const;
+    void setContextOpacityPercent(int percent);
+    [[nodiscard]] int contextOpacityPercent() const;
 
 signals:
     void settingsChanged();
@@ -32,13 +34,16 @@ private:
         QLabel* saturationValue = nullptr;
         QSlider* contrast = nullptr;
         QLabel* contrastValue = nullptr;
+        QSlider* opacity = nullptr;
+        QLabel* opacityValue = nullptr;
         QPushButton* reset = nullptr;
     };
 
     [[nodiscard]] QWidget* createLayerGroup(
         const QString& title,
         LayerControls& controls,
-        bool includeEdges);
+        bool includeEdges,
+        bool includeOpacity);
     void setLayerSettings(LayerControls& controls, const LayerVisualSettings& settings);
     [[nodiscard]] LayerVisualSettings layerSettings(const LayerControls& controls) const;
     void updateLabels(LayerControls& controls);

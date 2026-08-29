@@ -1,11 +1,9 @@
 #include "FieldSceneWidget.h"
 
 #include <QComboBox>
-#include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QSignalBlocker>
-#include <QSlider>
 #include <QStandardItemModel>
 #include <QTreeWidget>
 #include <QVariant>
@@ -171,19 +169,10 @@ FieldSceneWidget::FieldSceneWidget(QWidget* parent)
     resourceTree_->setHeaderLabels({ QStringLiteral("Scene layers"), QStringLiteral("State") });
     layout->addWidget(resourceTree_, 1);
 
-    auto* opacityRow = new QHBoxLayout();
-    opacityRow->addWidget(new QLabel(QStringLiteral("Field context opacity"), this));
-    contextOpacitySlider_ = new QSlider(Qt::Horizontal, this);
-    contextOpacitySlider_->setRange(0, 100);
-    contextOpacitySlider_->setValue(40);
-    contextOpacitySlider_->setToolTip(QStringLiteral(
-        "Adjust the opacity of the non-editable field context layer."));
-    contextOpacitySlider_->setEnabled(false);
-    contextOpacityValueLabel_ = new QLabel(QStringLiteral("40%"), this);
-    contextOpacityValueLabel_->setMinimumWidth(36);
-    opacityRow->addWidget(contextOpacitySlider_, 1);
-    opacityRow->addWidget(contextOpacityValueLabel_);
-    layout->addLayout(opacityRow);
+    groundMetadataLabel_ = new QLabel(this);
+    groundMetadataLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    groundMetadataLabel_->setVisible(false);
+    layout->addWidget(groundMetadataLabel_);
 
     rebaseButton_ = new QPushButton(QStringLiteral("Review and rebase patch conflicts"), this);
     rebaseButton_->setVisible(false);
@@ -213,10 +202,6 @@ FieldSceneWidget::FieldSceneWidget(QWidget* parent)
         this, &FieldSceneWidget::onResourceItemChanged);
     connect(resourceTree_, &QTreeWidget::currentItemChanged, this,
         [this](QTreeWidgetItem* current, QTreeWidgetItem*) { onCurrentResourceChanged(current); });
-    connect(contextOpacitySlider_, &QSlider::valueChanged, this, [this](const int percent) {
-        updateOpacityLabel(percent);
-        if (!updating_) emit contextOpacityChanged(percent);
-    });
     connect(rebaseButton_, &QPushButton::clicked, this, &FieldSceneWidget::rebaseRequested);
 }
 
@@ -264,6 +249,7 @@ void FieldSceneWidget::setFieldSelectionEnabled(const bool enabled) {
 void FieldSceneWidget::setScene(
     const skewer::core::SceneModel* scene,
     const std::vector<skewer::core::EventGroundPreset>& presets) {
+    clearGroundMetadata();
     const QSignalBlocker treeBlocker(resourceTree_);
     const QSignalBlocker stateBlocker(fieldStateCombo_);
     updating_ = true;
@@ -282,7 +268,6 @@ void FieldSceneWidget::setScene(
     eventGroundDisplayMode_ = EventGroundDisplayMode::Raw;
     selectedEventGroundPresetId_.clear();
     visibilityCount_ = scene == nullptr ? 0U : scene->batches.size() + scene->contextBatches.size();
-    contextOpacitySlider_->setEnabled(scene != nullptr && !scene->contextBatches.empty());
 
     if (scene != nullptr) {
         std::set<std::size_t> groupedBatchIndices{};
@@ -436,19 +421,19 @@ void FieldSceneWidget::setScene(
 
 void FieldSceneWidget::clearScene() { setScene(nullptr); }
 
-void FieldSceneWidget::setContextOpacityEnabled(const bool enabled) {
-    contextOpacitySlider_->setEnabled(enabled);
+void FieldSceneWidget::showGroundTblId(const std::int32_t tblId) {
+    const auto hexadecimal = QString::number(
+        static_cast<std::uint32_t>(tblId), 16)
+        .rightJustified(8, QLatin1Char('0')).toUpper();
+    groundMetadataLabel_->setText(
+        QStringLiteral("GRND tblId: 0x%1 (%2)").arg(hexadecimal).arg(tblId));
+    groundMetadataLabel_->setVisible(true);
 }
 
-void FieldSceneWidget::setContextOpacity(const int percent) {
-    const QSignalBlocker blocker(contextOpacitySlider_);
-    updating_ = true;
-    contextOpacitySlider_->setValue(std::clamp(percent, 0, 100));
-    updateOpacityLabel(contextOpacitySlider_->value());
-    updating_ = false;
+void FieldSceneWidget::clearGroundMetadata() {
+    groundMetadataLabel_->clear();
+    groundMetadataLabel_->setVisible(false);
 }
-
-int FieldSceneWidget::contextOpacity() const { return contextOpacitySlider_->value(); }
 
 void FieldSceneWidget::restoreHiddenBatches(const QStringList& hiddenBatches) {
     const QSignalBlocker blocker(resourceTree_);
@@ -639,10 +624,6 @@ void FieldSceneWidget::updateTreeState() {
                 : QStringLiteral("Custom"));
         }
     }
-}
-
-void FieldSceneWidget::updateOpacityLabel(const int percent) {
-    contextOpacityValueLabel_->setText(QStringLiteral("%1%").arg(percent));
 }
 
 } // namespace skewer::qt

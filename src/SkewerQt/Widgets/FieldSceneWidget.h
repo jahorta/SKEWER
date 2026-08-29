@@ -13,7 +13,6 @@
 class QComboBox;
 class QLabel;
 class QPushButton;
-class QSlider;
 class QTreeWidget;
 class QTreeWidgetItem;
 
@@ -41,9 +40,8 @@ public:
         const skewer::core::SceneModel* scene,
         const std::vector<skewer::core::EventGroundPreset>& presets = {});
     void clearScene();
-    void setContextOpacityEnabled(bool enabled);
-    void setContextOpacity(int percent);
-    [[nodiscard]] int contextOpacity() const;
+    void showGroundTblId(std::int32_t tblId);
+    void clearGroundMetadata();
 
     void restoreHiddenBatches(const QStringList& hiddenBatches);
     void setVisibility(const std::vector<std::uint8_t>& visibility);
@@ -64,20 +62,17 @@ signals:
     void groundEntrySelectionChanged(qint64 entryTableIndex);
     void rawEventGroundRequested();
     void eventGroundPresetRequested(const QString& presetId);
-    void contextOpacityChanged(int percent);
     void rebaseRequested();
 
 private:
     void onResourceItemChanged(QTreeWidgetItem* item, int column);
     void onCurrentResourceChanged(QTreeWidgetItem* current);
-    void updateOpacityLabel(int percent);
     void updateTreeState();
 
     QComboBox* fieldCombo_ = nullptr;
     QComboBox* fieldStateCombo_ = nullptr;
     QTreeWidget* resourceTree_ = nullptr;
-    QSlider* contextOpacitySlider_ = nullptr;
-    QLabel* contextOpacityValueLabel_ = nullptr;
+    QLabel* groundMetadataLabel_ = nullptr;
     QPushButton* rebaseButton_ = nullptr;
     std::size_t visibilityCount_ = 0U;
     std::vector<skewer::core::EventGroundPreset> presets_{};

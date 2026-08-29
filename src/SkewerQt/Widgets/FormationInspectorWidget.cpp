@@ -11,7 +11,7 @@ namespace skewer::qt {
 FormationInspectorWidget::FormationInspectorWidget(QWidget* parent)
     : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
-    statusLabel_ = new QLabel(QStringLiteral("No ALX data selected."), this);
+    statusLabel_ = new QLabel(QStringLiteral("ALX: Off"), this);
     statusLabel_->setWordWrap(true);
     layout->addWidget(statusLabel_);
     headerLabel_ = new QLabel(
@@ -28,13 +28,17 @@ FormationInspectorWidget::FormationInspectorWidget(QWidget* parent)
 }
 
 void FormationInspectorWidget::showLoading(const QString& rootPath) {
-    statusLabel_->setText(QStringLiteral("Loading ALX data from %1...").arg(rootPath));
+    statusLabel_->setText(QStringLiteral("ALX: Loading..."));
+    statusLabel_->setToolTip(QStringLiteral("Loading ALX data from %1").arg(rootPath));
     headerLabel_->setText(QStringLiteral("Formation enrichment is loading."));
     clearRows();
 }
 
 void FormationInspectorWidget::showUnavailable(const bool rememberedRoot) {
     statusLabel_->setText(rememberedRoot
+        ? QStringLiteral("ALX: Unavailable")
+        : QStringLiteral("ALX: Off"));
+    statusLabel_->setToolTip(rememberedRoot
         ? QStringLiteral("The remembered ALX data is unavailable. Native editing is unaffected.")
         : QStringLiteral("No ALX data selected."));
     headerLabel_->setText(
@@ -45,7 +49,9 @@ void FormationInspectorWidget::showUnavailable(const bool rememberedRoot) {
 void FormationInspectorWidget::showLoadedSource(
     const QString& locale,
     const QString& rootPath) {
-    statusLabel_->setText(QStringLiteral("Loaded %1 ALX data: %2").arg(locale, rootPath));
+    statusLabel_->setText(QStringLiteral("ALX: %1").arg(locale));
+    statusLabel_->setToolTip(QStringLiteral("Loaded %1 ALX data from %2")
+        .arg(locale, rootPath));
 }
 
 void FormationInspectorWidget::showSelectionPrompt() {

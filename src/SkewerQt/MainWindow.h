@@ -12,6 +12,8 @@
 
 class QAction;
 class QCloseEvent;
+class QPushButton;
+class QSplitter;
 
 namespace skewer::qt {
 
@@ -19,11 +21,11 @@ class DiagnosticsWidget;
 class EncounterEditorWidget;
 class FieldSceneWidget;
 class FormationInspectorWidget;
-class GroundMetadataWidget;
 class TriangleInspectorWidget;
 class VisualSettingsDialog;
 class ViewportController;
 class ViewportWidget;
+class WorkspaceViewWidget;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -49,7 +51,6 @@ private slots:
     void onGroundEntrySelectionChanged(qint64 entryTableIndex);
     void onRawEventGroundRequested();
     void onEventGroundPresetRequested(const QString& presetId);
-    void onContextOpacityChanged(int percent);
     void onTableChanged(int tableIndex);
     void updateInspector();
     void jumpToSelectedTable();
@@ -60,6 +61,7 @@ private slots:
     void onEncounterSelectionChanged(int tableIndex, int rowIndex);
     void undoEdit();
     void redoEdit();
+    void showCurrentFieldChanges();
     void rebaseConflicts();
     bool exportPatches();
     void frameAll();
@@ -67,7 +69,7 @@ private slots:
     void saveCheckpoint();
 
 private:
-    static constexpr int kDockLayoutVersion = 1;
+    static constexpr int kDockLayoutVersion = 2;
 
     void buildUi();
     void connectControllers();
@@ -77,8 +79,14 @@ private:
     void updateFormationDock();
     void refreshAlxFieldDiagnostics();
     void restoreDocumentState();
+    void showVisualSettingsDialog();
+    void updateEditSummary();
     void renderDiagnostics();
-    void appendDiagnostics(
+    void appendFieldDiagnostics(
+        const std::vector<skewer::core::Diagnostic>& diagnostics,
+        bool clearFirst);
+    void appendBoundedDiagnostics(
+        std::vector<skewer::core::Diagnostic>& target,
         const std::vector<skewer::core::Diagnostic>& diagnostics,
         bool clearFirst);
     [[nodiscard]] bool archiveOrDiscardWorkspacePatches(bool discard);
@@ -86,21 +94,28 @@ private:
 
     WorkspaceController workspace_;
     FieldSessionController session_;
-    std::vector<skewer::core::Diagnostic> generalDiagnostics_{};
+    std::vector<skewer::core::Diagnostic> fieldDiagnostics_{};
     std::vector<skewer::core::Diagnostic> alxLoadDiagnostics_{};
     std::vector<skewer::core::Diagnostic> alxFieldDiagnostics_{};
+    std::vector<skewer::core::Diagnostic> viewportDiagnostics_{};
+    std::vector<skewer::core::Diagnostic> workspaceDiagnostics_{};
+    std::vector<skewer::core::Diagnostic> exportDiagnostics_{};
 
+    WorkspaceViewWidget* workspaceView_ = nullptr;
     ViewportWidget* viewportWidget_ = nullptr;
     ViewportController* viewportController_ = nullptr;
     FieldSceneWidget* fieldScene_ = nullptr;
     TriangleInspectorWidget* triangleInspector_ = nullptr;
-    GroundMetadataWidget* groundMetadata_ = nullptr;
     EncounterEditorWidget* encounterEditor_ = nullptr;
     FormationInspectorWidget* formationInspector_ = nullptr;
     DiagnosticsWidget* diagnosticsWidget_ = nullptr;
+    QSplitter* encounterSplitter_ = nullptr;
+    QPushButton* editSummaryButton_ = nullptr;
     VisualSettingsDialog* visualSettingsDialog_ = nullptr;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;
+    QAction* reviewChangesAction_ = nullptr;
+    QAction* diagnosticsAction_ = nullptr;
     QAction* selectAlxAction_ = nullptr;
     QAction* clearAlxAction_ = nullptr;
 };

@@ -1,8 +1,11 @@
 #include "ViewportWidget.h"
 
+#include <QIcon>
 #include <QQuickItem>
 #include <QQuickWidget>
+#include <QResizeEvent>
 #include <QQmlError>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -17,6 +20,27 @@ ViewportWidget::ViewportWidget(QWidget* parent)
     quickView_ = new QQuickWidget(this);
     quickView_->setResizeMode(QQuickWidget::SizeRootObjectToView);
     layout->addWidget(quickView_);
+
+    visualSettingsButton_ = new QToolButton(this);
+    visualSettingsButton_->setFixedSize(32, 32);
+    visualSettingsButton_->setAutoRaise(true);
+    visualSettingsButton_->setToolTip(QStringLiteral("Visual Settings"));
+    visualSettingsButton_->setAccessibleName(QStringLiteral("Visual Settings"));
+    const auto settingsIcon = QIcon::fromTheme(QStringLiteral("preferences-system"));
+    if (settingsIcon.isNull()) {
+        visualSettingsButton_->setText(QStringLiteral("\u2699"));
+    } else {
+        visualSettingsButton_->setIcon(settingsIcon);
+        visualSettingsButton_->setIconSize(QSize(20, 20));
+    }
+    visualSettingsButton_->setStyleSheet(QStringLiteral(
+        "QToolButton { background: rgba(32, 36, 43, 190); color: white; "
+        "border: 1px solid rgba(255, 255, 255, 90); border-radius: 4px; } "
+        "QToolButton:hover { background: rgba(55, 61, 71, 220); } "
+        "QToolButton:pressed { background: rgba(20, 23, 28, 230); }"));
+    connect(visualSettingsButton_, &QToolButton::clicked,
+        this, &ViewportWidget::visualSettingsRequested);
+    positionVisualSettingsButton();
 
     connect(quickView_, &QQuickWidget::statusChanged, this,
         [this](const QQuickWidget::Status status) {
@@ -132,6 +156,20 @@ bool ViewportWidget::isReady() const noexcept {
 
 const std::vector<skewer::core::Diagnostic>& ViewportWidget::loadDiagnostics() const noexcept {
     return loadDiagnostics_;
+}
+
+void ViewportWidget::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    positionVisualSettingsButton();
+}
+
+void ViewportWidget::positionVisualSettingsButton() {
+    if (visualSettingsButton_ == nullptr) return;
+    constexpr int margin = 12;
+    visualSettingsButton_->move(
+        std::max(0, width() - visualSettingsButton_->width() - margin),
+        std::max(0, height() - visualSettingsButton_->height() - margin));
+    visualSettingsButton_->raise();
 }
 
 void ViewportWidget::applyPendingState() {

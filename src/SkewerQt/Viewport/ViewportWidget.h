@@ -14,6 +14,8 @@
 
 class QObject;
 class QQuickWidget;
+class QResizeEvent;
+class QToolButton;
 
 namespace skewer::qt {
 
@@ -45,11 +47,17 @@ public:
 signals:
     void ready();
     void loadDiagnosticsChanged();
+    void visualSettingsRequested();
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     void applyPendingState();
+    void positionVisualSettingsButton();
 
     QQuickWidget* quickView_ = nullptr;
+    QToolButton* visualSettingsButton_ = nullptr;
     QPointer<QObject> backend_{};
     QVariantList sceneMeshes_{};
     QVariantList selectionMeshes_{};

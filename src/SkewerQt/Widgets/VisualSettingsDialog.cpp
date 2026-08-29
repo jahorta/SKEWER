@@ -12,6 +12,8 @@
 namespace skewer::qt {
 namespace {
 
+constexpr int kDefaultContextOpacityPercent = 40;
+
 void configureSlider(QSlider* slider) {
     slider->setRange(kVisualAdjustmentMinimumPercent, kVisualAdjustmentMaximumPercent);
     slider->setValue(kVisualAdjustmentNeutralPercent);
@@ -29,9 +31,9 @@ VisualSettingsDialog::VisualSettingsDialog(QWidget* parent)
 
     auto* layout = new QVBoxLayout(this);
     layout->addWidget(createLayerGroup(
-        QStringLiteral("Encounter Surfaces"), encounterControls_, true));
+        QStringLiteral("Encounter Surfaces"), encounterControls_, true, false));
     layout->addWidget(createLayerGroup(
-        QStringLiteral("Field Context"), contextControls_, false));
+        QStringLiteral("Field Context"), contextControls_, false, true));
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     auto* resetAll = buttons->addButton(
@@ -40,6 +42,7 @@ VisualSettingsDialog::VisualSettingsDialog(QWidget* parent)
         updating_ = true;
         setLayerSettings(encounterControls_, {});
         setLayerSettings(contextControls_, {});
+        contextControls_.opacity->setValue(kDefaultContextOpacityPercent);
         encounterEdges_->setChecked(false);
         updating_ = false;
         emit settingsChanged();
@@ -53,7 +56,8 @@ VisualSettingsDialog::VisualSettingsDialog(QWidget* parent)
 QWidget* VisualSettingsDialog::createLayerGroup(
     const QString& title,
     LayerControls& controls,
-    const bool includeEdges) {
+    const bool includeEdges,
+    const bool includeOpacity) {
     auto* group = new QGroupBox(title, this);
     auto* grid = new QGridLayout(group);
 
@@ -79,6 +83,25 @@ QWidget* VisualSettingsDialog::createLayerGroup(
         controls.contrast, controls.contrastValue);
 
     int nextRow = 3;
+    if (includeOpacity) {
+        grid->addWidget(new QLabel(QStringLiteral("Opacity"), this), nextRow, 0);
+        controls.opacity = new QSlider(Qt::Horizontal, this);
+        controls.opacity->setRange(0, 100);
+        controls.opacity->setValue(kDefaultContextOpacityPercent);
+        controls.opacity->setSingleStep(1);
+        controls.opacity->setPageStep(10);
+        controls.opacity->setToolTip(QStringLiteral(
+            "Adjust the opacity of the non-editable field context layer."));
+        grid->addWidget(controls.opacity, nextRow, 1);
+        controls.opacityValue = new QLabel(QStringLiteral("40%"), this);
+        controls.opacityValue->setMinimumWidth(42);
+        grid->addWidget(controls.opacityValue, nextRow++, 2);
+        connect(controls.opacity, &QSlider::valueChanged, this,
+            [this, &controls](const int) {
+                updateLabels(controls);
+                notifyChanged();
+            });
+    }
     if (includeEdges) {
         encounterEdges_ = new QCheckBox(QStringLiteral("Show triangle edges"), this);
         grid->addWidget(encounterEdges_, nextRow++, 0, 1, 3);
@@ -117,6 +140,17 @@ VisualSettings VisualSettingsDialog::settings() const {
     });
 }
 
+void VisualSettingsDialog::setContextOpacityPercent(const int percent) {
+    updating_ = true;
+    contextControls_.opacity->setValue(std::clamp(percent, 0, 100));
+    updateLabels(contextControls_);
+    updating_ = false;
+}
+
+int VisualSettingsDialog::contextOpacityPercent() const {
+    return contextControls_.opacity->value();
+}
+
 void VisualSettingsDialog::setLayerSettings(
     LayerControls& controls,
     const LayerVisualSettings& settings) {
@@ -142,11 +176,18 @@ void VisualSettingsDialog::updateLabels(LayerControls& controls) {
         QStringLiteral("%1%").arg(controls.saturation->value()));
     controls.contrastValue->setText(
         QStringLiteral("%1%").arg(controls.contrast->value()));
+    if (controls.opacity != nullptr) {
+        controls.opacityValue->setText(
+            QStringLiteral("%1%").arg(controls.opacity->value()));
+    }
 }
 
 void VisualSettingsDialog::resetLayer(LayerControls& controls) {
     updating_ = true;
     setLayerSettings(controls, {});
+    if (controls.opacity != nullptr) {
+        controls.opacity->setValue(kDefaultContextOpacityPercent);
+    }
     updating_ = false;
     emit settingsChanged();
 }
