@@ -9,7 +9,7 @@
 #include <vector>
 
 class QCheckBox;
-class QTreeWidget;
+class QListWidget;
 
 namespace skewer::qt {
 
@@ -52,7 +52,7 @@ private:
     QCheckBox* errorsCheck_ = nullptr;
     QCheckBox* warningsCheck_ = nullptr;
     QCheckBox* infosCheck_ = nullptr;
-    QTreeWidget* tree_ = nullptr;
+    QListWidget* list_ = nullptr;
     DiagnosticSummary summary_{};
 };
 

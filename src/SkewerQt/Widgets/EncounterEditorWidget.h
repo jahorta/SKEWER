@@ -1,8 +1,12 @@
 #pragma once
 
+#include "SkewerCore/AlxEnrichment.h"
 #include "SkewerCore/FieldDocument.h"
 
 #include <QWidget>
+
+#include <optional>
+#include <vector>
 
 class QLabel;
 class QSpinBox;
@@ -18,7 +22,10 @@ class EncounterEditorWidget final : public QWidget {
 public:
     explicit EncounterEditorWidget(QWidget* parent = nullptr);
 
-    void showTable(const skewer::core::FieldDocument* document, int tableIndex);
+    void showTable(
+        const skewer::core::FieldDocument* document,
+        int tableIndex,
+        const std::vector<std::optional<skewer::core::FormationResolution>>& formations);
     void selectTable(int tableIndex);
     void restoreTable(int tableIndex);
     void setWritable(bool writable);

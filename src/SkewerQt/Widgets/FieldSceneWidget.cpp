@@ -276,7 +276,6 @@ void FieldSceneWidget::setScene(
             encounterRoot->setText(0, QStringLiteral("Encounter Surfaces"));
             encounterRoot->setFlags(encounterRoot->flags() | Qt::ItemIsUserCheckable);
             encounterRoot->setCheckState(0, Qt::Checked);
-            encounterRoot->setExpanded(true);
             std::size_t encounterTriangleCount = 0U;
             for (const auto& group : scene->eventGroundGroups) {
                 auto* groupItem = new QTreeWidgetItem(encounterRoot);
@@ -322,7 +321,6 @@ void FieldSceneWidget::setScene(
                 otherRoot->setText(0, QStringLiteral("Other GRND/GOBJ"));
                 otherRoot->setFlags(otherRoot->flags() | Qt::ItemIsUserCheckable);
                 otherRoot->setCheckState(0, Qt::Checked);
-                otherRoot->setExpanded(true);
             }
             return otherRoot;
         };
@@ -379,7 +377,6 @@ void FieldSceneWidget::setScene(
                     ? QStringLiteral("Ordinary Objects") : QStringLiteral("Unreferenced Resources"));
                 root->setFlags(root->flags() | Qt::ItemIsUserCheckable);
                 root->setCheckState(0, Qt::Checked);
-                root->setExpanded(true);
             }
             auto* item = new QTreeWidgetItem(root);
             item->setText(0, role == skewer::core::SceneReferenceRole::OrdinaryObject
@@ -403,7 +400,6 @@ void FieldSceneWidget::setScene(
                 .arg(scene->contextEntryCount()).arg(scene->contextTriangleCount()));
             contextRoot->setFlags(contextRoot->flags() | Qt::ItemIsUserCheckable);
             contextRoot->setCheckState(0, Qt::Checked);
-            contextRoot->setExpanded(true);
             for (std::size_t index = 0; index < scene->contextBatches.size(); ++index) {
                 const auto& batch = scene->contextBatches[index];
                 auto* item = new QTreeWidgetItem(contextRoot);
@@ -416,6 +412,7 @@ void FieldSceneWidget::setScene(
         }
     }
     updateTreeState();
+    resourceTree_->collapseAll();
     updating_ = false;
 }
 

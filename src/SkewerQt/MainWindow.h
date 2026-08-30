@@ -69,12 +69,13 @@ private slots:
     void saveCheckpoint();
 
 private:
-    static constexpr int kDockLayoutVersion = 2;
+    static constexpr int kDockLayoutVersion = 3;
 
     void buildUi();
     void connectControllers();
     void applyDocument();
     void refreshAfterSemanticEdit();
+    void refreshEncounterTable(int tableIndex);
     void updateEditingState();
     void updateFormationDock();
     void refreshAlxFieldDiagnostics();

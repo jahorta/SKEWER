@@ -25,6 +25,8 @@ public:
     void setDiagnosticsSummary(const DiagnosticSummary& summary);
     void setDiagnosticsExpanded(bool expanded);
     [[nodiscard]] bool diagnosticsExpanded() const noexcept;
+    void setDiagnosticsWidth(int width);
+    [[nodiscard]] int diagnosticsWidth() const noexcept;
 
 signals:
     void diagnosticsExpandedChanged(bool expanded);
@@ -39,6 +41,7 @@ private:
     QFrame* panel_ = nullptr;
     QToolButton* handle_ = nullptr;
     DiagnosticSummary summary_{};
+    int preferredPanelWidth_ = 420;
     bool expanded_ = false;
 };
 

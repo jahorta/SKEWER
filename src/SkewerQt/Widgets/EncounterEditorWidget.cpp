@@ -7,14 +7,49 @@
 #include <QLabel>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QStringList>
 #include <QTabBar>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <utility>
 #include <variant>
+#include <vector>
 
 namespace skewer::qt {
+namespace {
+
+[[nodiscard]] QString formationSummary(
+    const skewer::core::FormationResolution& formation) {
+    std::vector<std::pair<QString, int>> enemies{};
+    for (const auto& enemy : formation.enemies) {
+        if (enemy.empty()) continue;
+        auto name = QString::fromStdString(enemy.displayName);
+        if (name.isEmpty()) {
+            name = QStringLiteral("Enemy %1").arg(enemy.enemyId);
+        }
+        const auto found = std::find_if(enemies.begin(), enemies.end(),
+            [&name](const auto& entry) { return entry.first == name; });
+        if (found == enemies.end()) enemies.emplace_back(std::move(name), 1);
+        else ++found->second;
+    }
+    if (enemies.empty()) return QStringLiteral("Empty");
+    QStringList parts{};
+    for (const auto& [name, count] : enemies) {
+        parts.push_back(QStringLiteral("%1x%2").arg(count).arg(name));
+    }
+    return parts.join(QStringLiteral(", "));
+}
+
+[[nodiscard]] QString unavailableFormationTooltip(
+    const skewer::core::FormationResolutionStatus status) {
+    return status == skewer::core::FormationResolutionStatus::Ambiguous
+        ? QStringLiteral("More than one ALX formation matches this encounter ID.")
+        : QStringLiteral("No ALX formation matches this encounter ID.");
+}
+
+} // namespace
 
 EncounterEditorWidget::EncounterEditorWidget(QWidget* parent)
     : QWidget(parent) {
@@ -46,8 +81,18 @@ EncounterEditorWidget::EncounterEditorWidget(QWidget* parent)
 
     encounterTable_ = new QTableWidget(32, 3, this);
     encounterTable_->setHorizontalHeaderLabels(
-        { QStringLiteral("Slot"), QStringLiteral("Encounter ID"), QStringLiteral("Weight / rate") });
-    encounterTable_->horizontalHeader()->setStretchLastSection(true);
+        { QStringLiteral("Enc. ID"), QStringLiteral("Enc. Weight"),
+            QStringLiteral("Enemy Formation") });
+    QStringList slotLabels{};
+    for (int slot = 0; slot < encounterTable_->rowCount(); ++slot) {
+        slotLabels.push_back(QString::number(slot));
+    }
+    encounterTable_->setVerticalHeaderLabels(slotLabels);
+    encounterTable_->verticalHeader()->setToolTip(QStringLiteral("Slot"));
+    encounterTable_->verticalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    encounterTable_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    encounterTable_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    encounterTable_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
     encounterTable_->setEditTriggers(
         QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
     encounterTable_->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -80,7 +125,8 @@ EncounterEditorWidget::EncounterEditorWidget(QWidget* parent)
 
 void EncounterEditorWidget::showTable(
     const skewer::core::FieldDocument* document,
-    const int tableIndex) {
+    const int tableIndex,
+    const std::vector<std::optional<skewer::core::FormationResolution>>& formations) {
     const int selectedRow = encounterTable_->currentRow();
     const QSignalBlocker tableBlocker(encounterTable_);
     const QSignalBlocker stageBlocker(stageEditor_);
@@ -110,11 +156,20 @@ void EncounterEditorWidget::showTable(
             ? QStringLiteral("QSpinBox { background: #fff4b4; }") : QString{});
     for (int row = 0; row < static_cast<int>(table.encounters.size()); ++row) {
         const auto& encounter = table.encounters[static_cast<std::size_t>(row)];
-        auto* slot = new QTableWidgetItem(QString::number(row));
-        slot->setFlags(slot->flags() & ~Qt::ItemIsEditable);
-        encounterTable_->setItem(row, 0, slot);
         auto* encounterId = new QTableWidgetItem(QString::number(encounter.encounterId));
         auto* weight = new QTableWidgetItem(QString::number(encounter.encounterRate));
+        auto* formation = new QTableWidgetItem();
+        formation->setFlags(formation->flags() & ~Qt::ItemIsEditable);
+        if (static_cast<std::size_t>(row) < formations.size() &&
+            formations[static_cast<std::size_t>(row)].has_value()) {
+            const auto& resolution = *formations[static_cast<std::size_t>(row)];
+            if (resolution.status == skewer::core::FormationResolutionStatus::Unique) {
+                formation->setText(formationSummary(resolution));
+            } else {
+                formation->setText(QStringLiteral("—"));
+                formation->setToolTip(unavailableFormationTooltip(resolution.status));
+            }
+        }
         if (document->isEctValueModified(
             { skewer::core::EctValueKind::EncounterId,
                 static_cast<std::size_t>(tableIndex), static_cast<std::size_t>(row) })) {
@@ -125,8 +180,9 @@ void EncounterEditorWidget::showTable(
                 static_cast<std::size_t>(tableIndex), static_cast<std::size_t>(row) })) {
             weight->setBackground(QColor(255, 244, 180));
         }
-        encounterTable_->setItem(row, 1, encounterId);
-        encounterTable_->setItem(row, 2, weight);
+        encounterTable_->setItem(row, 0, encounterId);
+        encounterTable_->setItem(row, 1, weight);
+        encounterTable_->setItem(row, 2, formation);
     }
     encounterTable_->selectRow(selectedRow >= 0 && selectedRow < encounterTable_->rowCount()
         ? selectedRow : 0);
@@ -161,8 +217,9 @@ int EncounterEditorWidget::currentRowIndex() const {
 }
 
 void EncounterEditorWidget::onEncounterItemChanged(QTableWidgetItem* item) {
-    if (updating_ || item == nullptr || item->column() == 0 || currentTableIndex() < 0) return;
-    const auto kind = item->column() == 1
+    if (updating_ || item == nullptr || item->column() < 0 ||
+        item->column() > 1 || currentTableIndex() < 0) return;
+    const auto kind = item->column() == 0
         ? skewer::core::EctValueKind::EncounterId : skewer::core::EctValueKind::Weight;
     emit valueEditRequested(
         { kind, static_cast<std::size_t>(currentTableIndex()),

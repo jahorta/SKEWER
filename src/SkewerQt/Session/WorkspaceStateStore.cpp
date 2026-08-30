@@ -124,7 +124,7 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
     }
     const auto root = document.object();
     const auto schemaVersion = root.value(QStringLiteral("schema_version")).toInt();
-    if (schemaVersion < 1 || schemaVersion > 8) {
+    if (schemaVersion < 1 || schemaVersion > 9) {
         error_ = QStringLiteral("Unsupported workspace schema version.");
         return std::nullopt;
     }
@@ -184,6 +184,11 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
             root.value(QStringLiteral("encounter_workspace_splitter_state"))
                 .toString().toLatin1());
     }
+    if (schemaVersion >= 9) {
+        state.diagnosticsDrawerWidth = std::clamp(
+            root.value(QStringLiteral("diagnostics_drawer_width")).toInt(420),
+            280, 4096);
+    }
     error_.clear();
     return state;
 }
@@ -211,7 +216,7 @@ bool WorkspaceStateStore::save(const WorkspaceState& state) {
         visualSettings.encounterEdgesEnabled);
 
     QJsonObject root{};
-    root.insert(QStringLiteral("schema_version"), 8);
+    root.insert(QStringLiteral("schema_version"), 9);
     root.insert(QStringLiteral("game_data_root"), state.gameDataRoot);
     root.insert(QStringLiteral("field_directory"), state.fieldDirectory);
     root.insert(QStringLiteral("alx_data_root"), state.alxDataRoot);
@@ -233,6 +238,8 @@ bool WorkspaceStateStore::save(const WorkspaceState& state) {
         QString::fromLatin1(state.mainWindowState.toBase64()));
     root.insert(QStringLiteral("encounter_workspace_splitter_state"),
         QString::fromLatin1(state.encounterWorkspaceSplitterState.toBase64()));
+    root.insert(QStringLiteral("diagnostics_drawer_width"),
+        state.diagnosticsDrawerWidth);
 
     QSaveFile output(statePath());
     if (!output.open(QIODevice::WriteOnly)) {

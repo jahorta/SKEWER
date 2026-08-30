@@ -109,6 +109,7 @@ MainWindow::MainWindow(QWidget* parent)
                 state.encounterWorkspaceSplitterState)) {
             encounterSplitter_->setSizes({ 300, 600, 350 });
         }
+        workspaceView_->setDiagnosticsWidth(state.diagnosticsDrawerWidth);
     }
     workspaceView_->setDiagnosticsExpanded(false);
 
@@ -178,7 +179,7 @@ void MainWindow::buildUi() {
     encounterDock->setWidget(encounterSplitter_);
     encounterDock->setAllowedAreas(Qt::BottomDockWidgetArea);
     addDockWidget(Qt::BottomDockWidgetArea, encounterDock);
-    setCorner(Qt::BottomLeftCorner, Qt::LeftDockWidgetArea);
+    setCorner(Qt::BottomLeftCorner, Qt::BottomDockWidgetArea);
     setCorner(Qt::BottomRightCorner, Qt::BottomDockWidgetArea);
 
     viewportWidget_ = new ViewportWidget(this);
@@ -305,6 +306,7 @@ void MainWindow::connectControllers() {
         this, [this]() {
             viewportController_->setScene(nullptr);
             workspace_.clearActiveFieldState();
+            refreshEncounterTable(encounterEditor_->currentTableIndex());
             updateInspector();
             updateEditSummary();
         });
@@ -339,6 +341,7 @@ void MainWindow::connectControllers() {
             alxLoadDiagnostics_.clear();
             renderDiagnostics();
             formationInspector_->showLoading(rootPath);
+            refreshEncounterTable(encounterEditor_->currentTableIndex());
         });
     connect(&session_, &FieldSessionController::alxLoadFinished,
         this, &MainWindow::onAlxLoadFinished);
@@ -346,8 +349,7 @@ void MainWindow::connectControllers() {
         this, &MainWindow::refreshAfterSemanticEdit);
     connect(&session_, &FieldSessionController::ectEditRejected,
         this, [this]() {
-            encounterEditor_->showTable(
-                session_.document(), encounterEditor_->currentTableIndex());
+            refreshEncounterTable(encounterEditor_->currentTableIndex());
         });
 
     connect(viewportController_, &ViewportController::selectionChanged,
@@ -429,6 +431,7 @@ void MainWindow::clearAlxData() {
     alxLoadDiagnostics_.clear();
     alxFieldDiagnostics_.clear();
     clearAlxAction_->setEnabled(false);
+    refreshEncounterTable(encounterEditor_->currentTableIndex());
     updateFormationDock();
     renderDiagnostics();
     scheduleCheckpoint();
@@ -506,6 +509,7 @@ void MainWindow::onAlxLoadFinished(const bool success) {
                     "if any, remains active. Review the diagnostics for details."));
         }
     }
+    refreshEncounterTable(encounterEditor_->currentTableIndex());
     renderDiagnostics();
 }
 
@@ -526,7 +530,7 @@ void MainWindow::applyDocument() {
     fieldScene_->clearGroundMetadata();
     fieldScene_->setScene(&document->scene, document->eventGroundPresets);
     restoreDocumentState();
-    encounterEditor_->showTable(document,
+    refreshEncounterTable(
         encounterEditor_->currentTableIndex() < 0
             ? 0 : encounterEditor_->currentTableIndex());
     refreshAlxFieldDiagnostics();
@@ -635,8 +639,7 @@ void MainWindow::refreshAfterSemanticEdit() {
     if (document == nullptr) return;
     viewportController_->refreshScene();
     updateInspector();
-    encounterEditor_->showTable(
-        document, encounterEditor_->currentTableIndex());
+    refreshEncounterTable(encounterEditor_->currentTableIndex());
     refreshAlxFieldDiagnostics();
     updateFormationDock();
     updateEditingState();
@@ -837,10 +840,22 @@ bool MainWindow::archiveOrDiscardWorkspacePatches(const bool discard) {
 }
 
 void MainWindow::onTableChanged(const int tableIndex) {
-    encounterEditor_->showTable(session_.document(), tableIndex);
+    refreshEncounterTable(tableIndex);
     updateEditingState();
     updateFormationDock();
     scheduleCheckpoint();
+}
+
+void MainWindow::refreshEncounterTable(const int tableIndex) {
+    std::vector<std::optional<skewer::core::FormationResolution>> formations{};
+    if (session_.hasAlxDataset() && session_.pendingAlxRoot().isEmpty()) {
+        constexpr int kEncounterRows = 32;
+        formations.reserve(kEncounterRows);
+        for (int row = 0; row < kEncounterRows; ++row) {
+            formations.push_back(session_.resolveFormation(tableIndex, row));
+        }
+    }
+    encounterEditor_->showTable(session_.document(), tableIndex, formations);
 }
 
 void MainWindow::updateFormationDock() {
@@ -1020,6 +1035,7 @@ WorkspaceState MainWindow::captureState() const {
     state.mainWindowGeometry = saveGeometry();
     state.mainWindowState = saveState(kDockLayoutVersion);
     state.encounterWorkspaceSplitterState = encounterSplitter_->saveState();
+    state.diagnosticsDrawerWidth = workspaceView_->diagnosticsWidth();
     return state;
 }
 

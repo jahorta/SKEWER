@@ -34,6 +34,7 @@ struct WorkspaceState {
     QByteArray mainWindowGeometry{};
     QByteArray mainWindowState{};
     QByteArray encounterWorkspaceSplitterState{};
+    int diagnosticsDrawerWidth = 420;
 };
 
 class WorkspaceStateStore final {
