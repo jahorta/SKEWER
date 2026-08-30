@@ -14,8 +14,8 @@ namespace {
 
 constexpr int kDefaultContextOpacityPercent = 40;
 
-void configureSlider(QSlider* slider) {
-    slider->setRange(kVisualAdjustmentMinimumPercent, kVisualAdjustmentMaximumPercent);
+void configureSlider(QSlider* slider, const int minimum) {
+    slider->setRange(minimum, kVisualAdjustmentMaximumPercent);
     slider->setValue(kVisualAdjustmentNeutralPercent);
     slider->setSingleStep(1);
     slider->setPageStep(10);
@@ -65,10 +65,11 @@ QWidget* VisualSettingsDialog::createLayerGroup(
         const int row,
         const QString& label,
         QSlider*& slider,
-        QLabel*& valueLabel) {
+        QLabel*& valueLabel,
+        const int minimum = kVisualAdjustmentMinimumPercent) {
         grid->addWidget(new QLabel(label, this), row, 0);
         slider = new QSlider(Qt::Horizontal, this);
-        configureSlider(slider);
+        configureSlider(slider, minimum);
         grid->addWidget(slider, row, 1);
         valueLabel = new QLabel(QStringLiteral("100%"), this);
         valueLabel->setMinimumWidth(42);
@@ -78,7 +79,8 @@ QWidget* VisualSettingsDialog::createLayerGroup(
     addSlider(0, QStringLiteral("Brightness"),
         controls.brightness, controls.brightnessValue);
     addSlider(1, QStringLiteral("Saturation"),
-        controls.saturation, controls.saturationValue);
+        controls.saturation, controls.saturationValue,
+        kVisualSaturationMinimumPercent);
     addSlider(2, QStringLiteral("Contrast"),
         controls.contrast, controls.contrastValue);
 

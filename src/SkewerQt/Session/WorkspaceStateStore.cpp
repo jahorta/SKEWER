@@ -22,11 +22,11 @@ namespace {
 }
 
 [[nodiscard]] LayerVisualSettings layerVisualSettingsFromJson(const QJsonObject& object) {
-    return {
+    return clampedLayerVisualSettings({
         visualPercent(object, QStringLiteral("brightness_percent")),
         visualPercent(object, QStringLiteral("saturation_percent")),
         visualPercent(object, QStringLiteral("contrast_percent"))
-    };
+    });
 }
 
 [[nodiscard]] QJsonObject layerVisualSettingsToJson(const LayerVisualSettings& settings) {

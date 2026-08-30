@@ -1,5 +1,7 @@
 #include "ViewportWidget.h"
 
+#include "SceneAdapter.h"
+
 #include <QIcon>
 #include <QQuickItem>
 #include <QQuickWidget>
@@ -173,6 +175,10 @@ void ViewportWidget::positionVisualSettingsButton() {
 }
 
 void ViewportWidget::applyPendingState() {
+    if (quickView_->rootObject() != nullptr) {
+        quickView_->rootObject()->setProperty(
+            "selectorColors", SceneAdapter::selectorColors());
+    }
     setBackend(backend_.data());
     setSceneMeshes(sceneMeshes_);
     setSelectionMeshes(selectionMeshes_);

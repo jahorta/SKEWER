@@ -7,6 +7,7 @@ namespace skewer::qt {
 inline constexpr int kVisualAdjustmentMinimumPercent = 0;
 inline constexpr int kVisualAdjustmentMaximumPercent = 200;
 inline constexpr int kVisualAdjustmentNeutralPercent = 100;
+inline constexpr int kVisualSaturationMinimumPercent = 25;
 
 struct LayerVisualSettings {
     int brightnessPercent = kVisualAdjustmentNeutralPercent;
@@ -25,7 +26,7 @@ struct VisualSettings {
     settings.brightnessPercent = std::clamp(settings.brightnessPercent,
         kVisualAdjustmentMinimumPercent, kVisualAdjustmentMaximumPercent);
     settings.saturationPercent = std::clamp(settings.saturationPercent,
-        kVisualAdjustmentMinimumPercent, kVisualAdjustmentMaximumPercent);
+        kVisualSaturationMinimumPercent, kVisualAdjustmentMaximumPercent);
     settings.contrastPercent = std::clamp(settings.contrastPercent,
         kVisualAdjustmentMinimumPercent, kVisualAdjustmentMaximumPercent);
     return settings;

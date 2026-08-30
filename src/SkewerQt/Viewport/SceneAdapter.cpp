@@ -1,5 +1,7 @@
 #include "SceneAdapter.h"
 
+#include "SelectorPalette.h"
+
 #include <QColor>
 #include <QQmlEngine>
 #include <QVariantMap>
@@ -17,18 +19,15 @@ struct Color {
     float a;
 };
 
-constexpr std::array<Color, 10> kPalette = {
-    Color{ 0.34F, 0.36F, 0.40F, 1.00F },
-    Color{ 0.15F, 0.62F, 0.95F, 1.00F },
-    Color{ 0.15F, 0.78F, 0.42F, 1.00F },
-    Color{ 0.98F, 0.73F, 0.18F, 1.00F },
-    Color{ 0.92F, 0.28F, 0.31F, 1.00F },
-    Color{ 0.65F, 0.35F, 0.91F, 1.00F },
-    Color{ 0.08F, 0.77F, 0.77F, 1.00F },
-    Color{ 0.95F, 0.43F, 0.78F, 1.00F },
-    Color{ 0.72F, 0.82F, 0.24F, 1.00F },
-    Color{ 1.00F, 0.00F, 1.00F, 1.00F },
-};
+[[nodiscard]] constexpr Color renderColor(const SelectorColor color) noexcept {
+    constexpr float kChannelMaximum = 255.0F;
+    return {
+        static_cast<float>(color.red) / kChannelMaximum,
+        static_cast<float>(color.green) / kChannelMaximum,
+        static_cast<float>(color.blue) / kChannelMaximum,
+        1.0F,
+    };
+}
 
 constexpr std::array<std::array<float, 2>, 3> kTriangleCoordinates = {
     std::array<float, 2>{ 1.0F, 0.0F },
@@ -152,6 +151,16 @@ QVariantList SceneAdapter::selectionMeshes() const {
     return result;
 }
 
+QVariantList SceneAdapter::selectorColors() {
+    QVariantList result{};
+    result.reserve(8);
+    for (std::size_t selector = 1; selector <= 8; ++selector) {
+        const auto& color = kSelectorPalette[selector];
+        result.push_back(QColor::fromRgb(color.red, color.green, color.blue));
+    }
+    return result;
+}
+
 const std::vector<std::uint8_t>& SceneAdapter::visibility() const noexcept {
     return visibility_;
 }
@@ -167,7 +176,8 @@ void SceneAdapter::rebuildScene() {
         for (const auto triangleIndex : batch.triangleIndices) {
             const auto& triangle = scene_->triangles[triangleIndex];
             const auto paletteIndex = triangle.selector <= 8U ? triangle.selector : 9U;
-            appendTriangle(vertices, triangle, kPalette[paletteIndex]);
+            appendTriangle(vertices, triangle,
+                renderColor(kSelectorPalette[paletteIndex]));
         }
         auto geometry = std::make_unique<SelectorGeometry>();
         geometry->setTriangles(vertices);

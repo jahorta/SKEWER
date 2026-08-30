@@ -60,6 +60,7 @@
     <ClInclude Include="VisualSettings.h" />
     <ClInclude Include="Session\WorkspaceStateStore.h" />
     <ClInclude Include="Viewport\SceneAdapter.h" />
+    <ClInclude Include="Viewport\SelectorPalette.h" />
     <ClInclude Include="Viewport\SelectorGeometry.h" />
     <ClInclude Include="Widgets\DiagnosticsWidget.h" />
     <ClInclude Include="Widgets\EditReviewDialog.h" />

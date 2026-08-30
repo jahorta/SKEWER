@@ -20,6 +20,7 @@
     <ClCompile Include="test_editing_patch_export.cpp" />
     <ClCompile Include="test_event_ground.cpp" />
     <ClCompile Include="test_scene_model.cpp" />
+    <ClCompile Include="test_selector_palette.cpp" />
     <ClCompile Include="test_triangle_picker.cpp" />
   </ItemGroup>
   <ItemGroup><ProjectReference Include="..\..\src\SkewerCore\SkewerCore.vcxproj"><Project>{A1875091-0BE3-44D0-B97A-A1E22E719691}</Project></ProjectReference></ItemGroup>

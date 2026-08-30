@@ -25,6 +25,7 @@ public:
 
     [[nodiscard]] QVariantList sceneMeshes() const;
     [[nodiscard]] QVariantList selectionMeshes() const;
+    [[nodiscard]] static QVariantList selectorColors();
     [[nodiscard]] const std::vector<std::uint8_t>& visibility() const noexcept;
 
 private:

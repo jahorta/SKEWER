@@ -8,6 +8,7 @@ Item {
     property var backend: null
     property var sceneMeshes: []
     property var selectionMeshes: []
+    property var selectorColors: []
     property vector3d orbitCenter: Qt.vector3d(0, 0, 0)
     property real orbitDistance: 500
     property real orbitYaw: 0
@@ -35,6 +36,22 @@ Item {
 
     function degToRad(degrees) { return degrees * Math.PI / 180.0 }
     function clamp(value, low, high) { return Math.max(low, Math.min(high, value)) }
+    function adjustedSelectorColor(baseColor) {
+        const luminance = baseColor.r * 0.2126
+                        + baseColor.g * 0.7152
+                        + baseColor.b * 0.0722
+        const saturatedR = luminance + (baseColor.r - luminance) * encounterSaturation
+        const saturatedG = luminance + (baseColor.g - luminance) * encounterSaturation
+        const saturatedB = luminance + (baseColor.b - luminance) * encounterSaturation
+        return Qt.rgba(
+            clamp(((saturatedR - 0.5) * encounterContrast + 0.5)
+                * encounterBrightness, 0.0, 1.0),
+            clamp(((saturatedG - 0.5) * encounterContrast + 0.5)
+                * encounterBrightness, 0.0, 1.0),
+            clamp(((saturatedB - 0.5) * encounterContrast + 0.5)
+                * encounterBrightness, 0.0, 1.0),
+            1.0)
+    }
     function vecAdd(a, b) { return Qt.vector3d(a.x + b.x, a.y + b.y, a.z + b.z) }
     function vecScale(v, scale) { return Qt.vector3d(v.x * scale, v.y * scale, v.z * scale) }
     function vecCross(a, b) {
@@ -163,6 +180,7 @@ Item {
     }
 
     Rectangle {
+        id: helpPanel
         anchors.left: parent.left
         anchors.bottom: parent.bottom
         anchors.margins: 8
@@ -175,6 +193,45 @@ Item {
             anchors.centerIn: parent
             text: "Left drag: orbit   Right/middle drag: pan   Wheel: zoom   Click: select   Shift/Ctrl: multi-select"
             color: "#E8EDF2"
+        }
+    }
+
+    Rectangle {
+        anchors.left: helpPanel.left
+        anchors.bottom: helpPanel.top
+        anchors.bottomMargin: 6
+        width: selectorLegendRow.implicitWidth + 16
+        height: selectorLegendRow.implicitHeight + 12
+        radius: 4
+        color: "#B020242B"
+
+        Row {
+            id: selectorLegendRow
+            anchors.centerIn: parent
+            spacing: 10
+
+            Repeater {
+                model: root.selectorColors.length
+                delegate: Row {
+                    required property int index
+                    spacing: 3
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (parent.index + 1) + ":"
+                        color: "#E8EDF2"
+                    }
+
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 14
+                        height: 14
+                        color: root.adjustedSelectorColor(root.selectorColors[parent.index])
+                        border.width: 1
+                        border.color: "#B0FFFFFF"
+                    }
+                }
+            }
         }
     }
 
