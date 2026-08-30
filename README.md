@@ -2,48 +2,43 @@
 
 Skies Keyed Encounters: Weighting, Editing, and Regions.
 
-SKEWER is a portable C++/Qt tool for inspecting and editing *Skies of Arcadia*
-random-encounter regions and encounter tables. Current support targets
-ordinary Dreamcast fields.
+SKEWER is a self-contained C++/Qt desktop application for inspecting and editing *Skies of Arcadia* random-encounter regions and encounter tables. Current support targets Dreamcast.
 
-## Current capabilities
+## Features
 
-- Select an extracted game-data root; SKEWER recursively requires exactly one
-  directory named `FIELD` (case-insensitive).
-- Enumerate direct-child ECT files as fields. Missing MLD pairs and deferred
-  Area 99 (`a099a`) remain visible but disabled.
-- Parse a selected ordinary Dreamcast ECT/MLD pair through the pinned SPICE
-  submodule and reject compressed/GameCube or malformed selected assets.
-- Render all decoded GRND and GOBJ collision triangles in Qt Quick 3D, colored
-  by encounter selector `0` through `8` (invalid selector digits are magenta).
-- Render `wall`, `walluv`, and `doorwall` object resources as a separate,
-  non-editable field-context layer in their authored bind pose, without
-  textures or animation.
-- Orbit, pan, zoom, frame, hide resources, and select exact triangles with a
-  CPU BVH picker. GRND and GOBJ selections retain different semantic keys.
-- Edit triangle encounter selectors and all eight fixed ECT tables, with
-  undo/redo and one auditable semantic patch document per changed field.
-- Invisibly preflight selected workspace patches and publish only changed ECT
-  or MLD files to a user-selected output directory.
-- Optionally load ALX 5.0.0 `enemy.csv` and `enemyencounter.csv` through
-  SpiceTrade and inspect the selected ECT row's formation and enemy names in a
-  separate read-only dock.
-- Resume the most recent root, field, table, camera, field-context opacity, visibility, selection,
-  ALX directory, and field patches from the portable `workspace` directory.
+- Discover supported fields from an extracted game-data root.
+- Visualize encounter collision and field-context geometry, with encounter regions colored by selector.
+- Select triangles and edit their encounter selectors alongside all eight ECT tables, with undo and redo.
+- Optionally display encounter formations and enemy names from ALX 5.0.0 CSV data.
+- Preserve edits and viewer state in a portable workspace beside the application.
+- Validate workspace patches and export only modified Dreamcast ECT and MLD files.
 
-Area 99, GameCube, ALX editing/export, and detailed enemy-stat inspection remain
-deferred.
+## Supported formats
 
-## Build
+| Format                                         | Purpose                                             | Support                                     |
+| ---------------------------------------------- | --------------------------------------------------- | ------------------------------------------- |
+| ECT                                            | Encounter tables                                    | Inspect, edit, and export                   |
+| MLD                                            | Collision geometry and triangle encounter selectors | Inspect geometry; edit and export selectors |
+| SCT                                            | Optional field-state presets for context geometry   | Read-only                                   |
+| ALX 5.0.0 `enemy.csv` and `enemyencounter.csv` | Formation and enemy-name context                    | Optional, read-only                         |
 
-Requirements:
+Area 99, GameCube fields, and ALX editing and export are not currently supported.
 
-- Visual Studio with MSVC toolchain `v145`;
-- Qt 6.10.3 `msvc2022_64` registered with Qt/MSBuild as
-  `6.10.3_msvc2022_64`;
-- initialized `SPICE` git submodule.
+## Building
 
-From an elevated PowerShell prompt:
+### Requirements
+
+- Visual Studio with the MSVC `v145` toolchain.
+- Qt 6.10.3 `msvc2022_64`, registered with Qt/MSBuild as `6.10.3_msvc2022_64`.
+- Git submodules initialized for SPICE and its dependencies.
+
+Initialize the submodules:
+
+```powershell
+git submodule update --init --recursive
+```
+
+Build from an elevated PowerShell prompt:
 
 ```powershell
 & "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\amd64\MSBuild.exe" `
@@ -56,29 +51,30 @@ From an elevated PowerShell prompt:
     /v:minimal
 ```
 
-The portable application and its deployed Qt runtime are written to
-`bin/x64/Debug/` (or `Release/`). Run the tests with:
+The application and its deployed Qt runtime are written to `bin/x64/Debug/` or `bin/x64/Release/`.
+
+## Testing
+
+After building the Debug configuration, run:
 
 ```powershell
 .\bin\x64\Debug\SkewerTests.exe
 ```
 
-## Use
+## Usage
 
-Launch `SkewerQt.exe`, choose **Open Game Data Root...**, and select either the
-extracted game root or its `FIELD` directory. Select any enabled ordinary
-field. Left-click selects a triangle; Shift adds and Ctrl toggles. Left-drag
-orbits, right/middle-drag pans, and the mouse wheel zooms.
-The left scene tree controls encounter resources separately from the Wall,
-WallUV, and Doorwall context types.
+Launch `SkewerQt.exe`, choose **File > Open Game Data Root...**, and select an extracted game root or its `FIELD` directory (currently supports only a single FIELD directory). Select an enabled field to view its encounter regions, edit triangle selectors and encounter tables, and review validation diagnostics. Use **File > Export Workspace Patches...** to publish the modified Dreamcast files.
 
-For optional enemy context, choose **ALX > Select ALX Data Directory...** and
-select the exact ALX 5.0.0 directory containing both `enemy.csv` and
-`enemyencounter.csv`. Select an ECT row to inspect its formation.
+For optional formation details, choose **ALX > Select ALX Data Directory...** and select the ALX 5.0.0 directory containing both `enemy.csv` and `enemyencounter.csv`.
 
-The executable directory must be writable because SKEWER is portable and does
-not fall back to AppData. If it cannot create its local `workspace` directory,
-the viewer remains usable but resume persistence is disabled and a warning is
-shown.
+SKEWER stores its `workspace` beside the executable and does not fall back to AppData. The executable directory must be writable to persist edits and  viewer state between sessions.
 
-Architecture and product decisions are maintained under [planning](planning/README.md).
+## Acknowledgements
+
+SKEWER uses [SPICE](SPICE/README.md) for Dreamcast field parsing, writing, and format support. SPICE and its third-party components remain subject to their respective licenses and notices.
+
+## License and game data
+
+SKEWER does not currently declare a top-level project license. The repository contains tooling only and does not include game data, extracted assets, or reference corpora.
+
+SKEWER is an independent fan and research project and is not affiliated with or endorsed by the rights holders of *Skies of Arcadia*.
