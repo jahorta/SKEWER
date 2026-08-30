@@ -41,6 +41,7 @@ protected:
 private slots:
     void chooseGameDataRoot();
     void chooseAlxDataRoot();
+    void refreshAlxData();
     void clearAlxData();
     void onDiscoveryFinished(bool success);
     void onFieldChanged(int catalogIndex);
@@ -118,7 +119,9 @@ private:
     QAction* reviewChangesAction_ = nullptr;
     QAction* diagnosticsAction_ = nullptr;
     QAction* selectAlxAction_ = nullptr;
+    QAction* refreshAlxAction_ = nullptr;
     QAction* clearAlxAction_ = nullptr;
+    bool alxRefreshRequested_ = false;
 };
 
 } // namespace skewer::qt

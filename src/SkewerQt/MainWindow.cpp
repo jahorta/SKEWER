@@ -250,10 +250,15 @@ void MainWindow::buildUi() {
     auto* dataMenu = menuBar()->addMenu(QStringLiteral("Data"));
     selectAlxAction_ = dataMenu->addAction(
         QStringLiteral("Select ALX Data Directory..."));
+    refreshAlxAction_ = dataMenu->addAction(
+        QStringLiteral("Refresh ALX Data"));
+    refreshAlxAction_->setEnabled(false);
     clearAlxAction_ = dataMenu->addAction(QStringLiteral("Clear ALX Data"));
     clearAlxAction_->setEnabled(false);
     connect(selectAlxAction_, &QAction::triggered,
         this, &MainWindow::chooseAlxDataRoot);
+    connect(refreshAlxAction_, &QAction::triggered,
+        this, &MainWindow::refreshAlxData);
     connect(clearAlxAction_, &QAction::triggered,
         this, &MainWindow::clearAlxData);
 
@@ -387,11 +392,15 @@ void MainWindow::connectControllers() {
     connect(&session_, &FieldSessionController::alxLoadStarted,
         this, [this](const QString& rootPath) {
             selectAlxAction_->setEnabled(false);
+            refreshAlxAction_->setEnabled(false);
             clearAlxAction_->setEnabled(false);
             alxLoadDiagnostics_.clear();
             renderDiagnostics();
             formationInspector_->showLoading(rootPath);
             refreshEncounterTable(encounterEditor_->currentTableIndex());
+            statusBar()->showMessage(alxRefreshRequested_
+                ? QStringLiteral("Refreshing ALX enrichment data...")
+                : QStringLiteral("Loading ALX enrichment data..."));
         });
     connect(&session_, &FieldSessionController::alxLoadFinished,
         this, &MainWindow::onAlxLoadFinished);
@@ -472,7 +481,17 @@ void MainWindow::chooseAlxDataRoot() {
         ? QDir::homePath() : session_.alxDataRoot();
     const auto directory = QFileDialog::getExistingDirectory(
         this, QStringLiteral("Select ALX 5.0.0 data directory"), initial);
-    if (!directory.isEmpty()) session_.beginAlxLoad(directory, true);
+    if (directory.isEmpty()) return;
+    alxRefreshRequested_ = false;
+    session_.beginAlxLoad(directory, true);
+}
+
+void MainWindow::refreshAlxData() {
+    if (session_.alxLoadRunning() || session_.alxDataRoot().isEmpty()) return;
+    alxRefreshRequested_ = true;
+    if (!session_.beginAlxLoad(session_.alxDataRoot(), true)) {
+        alxRefreshRequested_ = false;
+    }
 }
 
 void MainWindow::clearAlxData() {
@@ -480,6 +499,7 @@ void MainWindow::clearAlxData() {
     session_.clearAlxData();
     alxLoadDiagnostics_.clear();
     alxFieldDiagnostics_.clear();
+    refreshAlxAction_->setEnabled(false);
     clearAlxAction_->setEnabled(false);
     refreshEncounterTable(encounterEditor_->currentTableIndex());
     updateFormationDock();
@@ -535,28 +555,41 @@ void MainWindow::onFieldLoadFinished(const bool success) {
 }
 
 void MainWindow::onAlxLoadFinished(const bool success) {
+    const bool wasRefresh = alxRefreshRequested_;
+    alxRefreshRequested_ = false;
     alxLoadDiagnostics_ = session_.alxLoadDiagnostics();
     selectAlxAction_->setEnabled(true);
+    refreshAlxAction_->setEnabled(!session_.alxDataRoot().isEmpty());
     if (success) {
         clearAlxAction_->setEnabled(true);
         refreshAlxFieldDiagnostics();
         updateFormationDock();
         scheduleCheckpoint();
-        statusBar()->showMessage(
-            QStringLiteral("Loaded ALX enrichment data."), 10000);
+        statusBar()->showMessage(wasRefresh
+            ? QStringLiteral("Refreshed ALX enrichment data.")
+            : QStringLiteral("Loaded ALX enrichment data."), 10000);
     } else {
         clearAlxAction_->setEnabled(
             session_.hasAlxDataset() || !session_.alxDataRoot().isEmpty());
         refreshAlxFieldDiagnostics();
         updateFormationDock();
-        statusBar()->showMessage(QStringLiteral(
-            "ALX enrichment could not be loaded; native editing remains available."),
+        statusBar()->showMessage(wasRefresh
+            ? QStringLiteral(
+                "ALX enrichment could not be refreshed; the previous data remains active.")
+            : QStringLiteral(
+                "ALX enrichment could not be loaded; native editing remains available."),
             10000);
         if (session_.completedAlxLoadWasInteractive()) {
-            QMessageBox::warning(this, QStringLiteral("Cannot load ALX data"),
-                QStringLiteral(
-                    "The selected directory was not adopted. The existing ALX dataset, "
-                    "if any, remains active. Review the diagnostics for details."));
+            QMessageBox::warning(this, wasRefresh
+                ? QStringLiteral("Cannot refresh ALX data")
+                : QStringLiteral("Cannot load ALX data"),
+                wasRefresh
+                    ? QStringLiteral(
+                        "The ALX data could not be refreshed. The previous dataset, "
+                        "if any, remains active. Review the diagnostics for details.")
+                    : QStringLiteral(
+                        "The selected directory was not adopted. The existing ALX dataset, "
+                        "if any, remains active. Review the diagnostics for details."));
         }
     }
     refreshEncounterTable(encounterEditor_->currentTableIndex());
