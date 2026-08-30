@@ -9,7 +9,6 @@
 #include "Widgets/FormationInspectorWidget.h"
 #include "Widgets/TriangleInspectorWidget.h"
 #include "Widgets/VisualSettingsDialog.h"
-#include "Widgets/WorkspaceViewWidget.h"
 
 #include "SkewerCore/ExportService.h"
 
@@ -21,15 +20,16 @@
 #include <QDir>
 #include <QDockWidget>
 #include <QFileDialog>
+#include <QGroupBox>
 #include <QLabel>
 #include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
-#include <QSplitter>
 #include <QStatusBar>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -104,14 +104,13 @@ MainWindow::MainWindow(QWidget* parent)
             !restoreState(state.mainWindowState, kDockLayoutVersion)) {
             restoreState(defaultDockState, kDockLayoutVersion);
         }
-        if (!state.encounterWorkspaceSplitterState.isEmpty() &&
-            !encounterSplitter_->restoreState(
-                state.encounterWorkspaceSplitterState)) {
-            encounterSplitter_->setSizes({ 300, 600, 350 });
+        if (!state.diagnosticsWindowGeometry.isEmpty() &&
+            !diagnosticsWindow_->restoreGeometry(
+                state.diagnosticsWindowGeometry)) {
+            diagnosticsWindow_->resize(760, 520);
         }
-        workspaceView_->setDiagnosticsWidth(state.diagnosticsDrawerWidth);
     }
-    workspaceView_->setDiagnosticsExpanded(false);
+    diagnosticsWindow_->hide();
 
     if (!workspace_.isWritable()) {
         QTimer::singleShot(0, this, [this]() {
@@ -162,37 +161,66 @@ void MainWindow::buildUi() {
     fieldDock->setAllowedAreas(Qt::LeftDockWidgetArea);
     addDockWidget(Qt::LeftDockWidgetArea, fieldDock);
 
-    triangleInspector_ = new TriangleInspectorWidget(this);
-    encounterEditor_ = new EncounterEditorWidget(this);
-    formationInspector_ = new FormationInspectorWidget(this);
-    encounterSplitter_ = new QSplitter(Qt::Horizontal, this);
-    encounterSplitter_->addWidget(triangleInspector_);
-    encounterSplitter_->addWidget(encounterEditor_);
-    encounterSplitter_->addWidget(formationInspector_);
-    encounterSplitter_->setStretchFactor(0, 24);
-    encounterSplitter_->setStretchFactor(1, 48);
-    encounterSplitter_->setStretchFactor(2, 28);
-    encounterSplitter_->setSizes({ 300, 600, 350 });
+    auto* encounterWorkspace = new QWidget(this);
+    auto* encounterLayout = new QVBoxLayout(encounterWorkspace);
+    encounterLayout->setContentsMargins(4, 4, 4, 4);
+
+    auto* triangleGroup = new QGroupBox(
+        QStringLiteral("Selected Triangles"), encounterWorkspace);
+    auto* triangleLayout = new QVBoxLayout(triangleGroup);
+    triangleInspector_ = new TriangleInspectorWidget(triangleGroup);
+    triangleLayout->addWidget(triangleInspector_);
+    encounterLayout->addWidget(triangleGroup);
+
+    auto* tableGroup = new QGroupBox(
+        QStringLiteral("Encounter Table"), encounterWorkspace);
+    auto* tableLayout = new QVBoxLayout(tableGroup);
+    encounterEditor_ = new EncounterEditorWidget(tableGroup);
+    tableLayout->addWidget(encounterEditor_);
+    encounterLayout->addWidget(tableGroup, 1);
+
+    auto* formationToggle = new QToolButton(encounterWorkspace);
+    formationToggle->setText(QStringLiteral("ALX Formation Details"));
+    formationToggle->setCheckable(true);
+    formationToggle->setChecked(false);
+    formationToggle->setArrowType(Qt::RightArrow);
+    formationToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    formationInspector_ = new FormationInspectorWidget(encounterWorkspace);
+    formationInspector_->setVisible(false);
+    formationInspector_->setMaximumHeight(300);
+    encounterLayout->addWidget(formationToggle);
+    encounterLayout->addWidget(formationInspector_);
+    connect(formationToggle, &QToolButton::toggled,
+        this, [formationToggle, this](const bool expanded) {
+            formationToggle->setArrowType(
+                expanded ? Qt::DownArrow : Qt::RightArrow);
+            formationInspector_->setVisible(expanded);
+        });
+
     auto* encounterDock = new QDockWidget(
         QStringLiteral("Encounter Workspace"), this);
     encounterDock->setObjectName(QStringLiteral("encounterWorkspaceDock"));
-    encounterDock->setWidget(encounterSplitter_);
-    encounterDock->setAllowedAreas(Qt::BottomDockWidgetArea);
-    addDockWidget(Qt::BottomDockWidgetArea, encounterDock);
-    setCorner(Qt::BottomLeftCorner, Qt::BottomDockWidgetArea);
-    setCorner(Qt::BottomRightCorner, Qt::BottomDockWidgetArea);
+    encounterDock->setWidget(encounterWorkspace);
+    encounterDock->setAllowedAreas(Qt::RightDockWidgetArea);
+    addDockWidget(Qt::RightDockWidgetArea, encounterDock);
 
     viewportWidget_ = new ViewportWidget(this);
-    diagnosticsWidget_ = new DiagnosticsWidget(this);
-    workspaceView_ = new WorkspaceViewWidget(
-        viewportWidget_, diagnosticsWidget_, this);
     viewportController_ = new ViewportController(viewportWidget_, this);
     viewportController_->setContextOpacity(
         visualSettingsDialog_->contextOpacityPercent());
     viewportController_->setVisualSettings(visualSettingsDialog_->settings());
-    setCentralWidget(workspaceView_);
+    setCentralWidget(viewportWidget_);
     connect(viewportWidget_, &ViewportWidget::visualSettingsRequested,
         this, &MainWindow::showVisualSettingsDialog);
+
+    diagnosticsWindow_ = new QDialog(this, Qt::Window);
+    diagnosticsWindow_->setWindowTitle(QStringLiteral("SKEWER Diagnostics"));
+    diagnosticsWindow_->setModal(false);
+    diagnosticsWindow_->setMinimumSize(520, 300);
+    diagnosticsWindow_->resize(760, 520);
+    auto* diagnosticsLayout = new QVBoxLayout(diagnosticsWindow_);
+    diagnosticsWidget_ = new DiagnosticsWidget(diagnosticsWindow_);
+    diagnosticsLayout->addWidget(diagnosticsWidget_);
 
     auto* fileMenu = menuBar()->addMenu(QStringLiteral("File"));
     auto* openAction = fileMenu->addAction(QStringLiteral("Open Game Data Root..."));
@@ -237,9 +265,18 @@ void MainWindow::buildUi() {
     diagnosticsAction_ = viewMenu->addAction(QStringLiteral("Diagnostics"));
     diagnosticsAction_->setCheckable(true);
     connect(diagnosticsAction_, &QAction::toggled,
-        workspaceView_, &WorkspaceViewWidget::setDiagnosticsExpanded);
-    connect(workspaceView_, &WorkspaceViewWidget::diagnosticsExpandedChanged,
-        diagnosticsAction_, &QAction::setChecked);
+        this, [this](const bool visible) {
+            if (!visible) {
+                diagnosticsWindow_->hide();
+                return;
+            }
+            if (diagnosticsWindow_->isMinimized()) diagnosticsWindow_->showNormal();
+            else diagnosticsWindow_->show();
+            diagnosticsWindow_->raise();
+            diagnosticsWindow_->activateWindow();
+        });
+    connect(diagnosticsWindow_, &QDialog::finished,
+        this, [this]() { diagnosticsAction_->setChecked(false); });
     viewMenu->addSeparator();
     auto* frameAction = viewMenu->addAction(QStringLiteral("Frame All"));
     connect(frameAction, &QAction::triggered, this, &MainWindow::frameAll);
@@ -262,6 +299,19 @@ void MainWindow::buildUi() {
     connect(editSummaryButton_, &QPushButton::clicked,
         this, &MainWindow::showCurrentFieldChanges);
     statusBar()->addPermanentWidget(editSummaryButton_);
+
+    diagnosticsSummaryButton_ = new QPushButton(QStringLiteral("Diagnostics"), this);
+    diagnosticsSummaryButton_->setFlat(true);
+    connect(diagnosticsSummaryButton_, &QPushButton::clicked,
+        this, [this]() {
+            diagnosticsAction_->setChecked(true);
+            if (diagnosticsWindow_->isMinimized()) diagnosticsWindow_->showNormal();
+            else diagnosticsWindow_->show();
+            diagnosticsWindow_->raise();
+            diagnosticsWindow_->activateWindow();
+        });
+    statusBar()->addPermanentWidget(diagnosticsSummaryButton_);
+    updateDiagnosticsButton();
 
     connect(fieldScene_, &FieldSceneWidget::fieldSelectionRequested,
         this, &MainWindow::onFieldChanged);
@@ -294,7 +344,7 @@ void MainWindow::buildUi() {
     setWindowTitle(QStringLiteral(
         "SKEWER - Skies of Arcadia Encounter Editor"));
     resize(1500, 900);
-    resizeDocks({ encounterDock }, { 300 }, Qt::Vertical);
+    resizeDocks({ encounterDock }, { 520 }, Qt::Horizontal);
     statusBar()->showMessage(QStringLiteral(
         "Open a Dreamcast game-data root to begin."));
 }
@@ -1034,8 +1084,7 @@ WorkspaceState MainWindow::captureState() const {
         viewportController_->selection().end());
     state.mainWindowGeometry = saveGeometry();
     state.mainWindowState = saveState(kDockLayoutVersion);
-    state.encounterWorkspaceSplitterState = encounterSplitter_->saveState();
-    state.diagnosticsDrawerWidth = workspaceView_->diagnosticsWidth();
+    state.diagnosticsWindowGeometry = diagnosticsWindow_->saveGeometry();
     return state;
 }
 
@@ -1076,6 +1125,34 @@ void MainWindow::appendBoundedDiagnostics(
     }
 }
 
+void MainWindow::updateDiagnosticsButton() {
+    const auto summary = diagnosticsWidget_->summary();
+    QString text = QStringLiteral("Diagnostics");
+    QString style{};
+    if (summary.errors > 0U) {
+        text += QStringLiteral(" · %1 error%2")
+            .arg(summary.errors)
+            .arg(summary.errors == 1U ? QString{} : QStringLiteral("s"));
+        style = QStringLiteral(
+            "QPushButton { color: #b3261e; font-weight: bold; }");
+    } else if (summary.warnings > 0U) {
+        text += QStringLiteral(" · %1 warning%2")
+            .arg(summary.warnings)
+            .arg(summary.warnings == 1U ? QString{} : QStringLiteral("s"));
+        style = QStringLiteral(
+            "QPushButton { color: #8a5700; font-weight: bold; }");
+    } else if (summary.infos > 0U) {
+        text += QStringLiteral(" · %1 info")
+            .arg(summary.infos);
+        style = QStringLiteral("QPushButton { color: #28527a; }");
+    }
+    diagnosticsSummaryButton_->setText(text);
+    diagnosticsSummaryButton_->setStyleSheet(style);
+    diagnosticsSummaryButton_->setToolTip(QStringLiteral(
+        "Errors: %1 · Warnings: %2 · Information: %3")
+        .arg(summary.errors).arg(summary.warnings).arg(summary.infos));
+}
+
 void MainWindow::renderDiagnostics() {
     diagnosticsWidget_->setDiagnostics({
         { DiagnosticCategory::FieldImport, QStringLiteral("Field Import"), fieldDiagnostics_ },
@@ -1087,7 +1164,7 @@ void MainWindow::renderDiagnostics() {
             QStringLiteral("Workspace / Patch"), workspaceDiagnostics_ },
         { DiagnosticCategory::Export, QStringLiteral("Export"), exportDiagnostics_ },
     });
-    workspaceView_->setDiagnosticsSummary(diagnosticsWidget_->summary());
+    updateDiagnosticsButton();
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {

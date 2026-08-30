@@ -12,8 +12,8 @@
 
 class QAction;
 class QCloseEvent;
+class QDialog;
 class QPushButton;
-class QSplitter;
 
 namespace skewer::qt {
 
@@ -25,7 +25,6 @@ class TriangleInspectorWidget;
 class VisualSettingsDialog;
 class ViewportController;
 class ViewportWidget;
-class WorkspaceViewWidget;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -69,7 +68,7 @@ private slots:
     void saveCheckpoint();
 
 private:
-    static constexpr int kDockLayoutVersion = 3;
+    static constexpr int kDockLayoutVersion = 4;
 
     void buildUi();
     void connectControllers();
@@ -82,6 +81,7 @@ private:
     void restoreDocumentState();
     void showVisualSettingsDialog();
     void updateEditSummary();
+    void updateDiagnosticsButton();
     void renderDiagnostics();
     void appendFieldDiagnostics(
         const std::vector<skewer::core::Diagnostic>& diagnostics,
@@ -102,7 +102,6 @@ private:
     std::vector<skewer::core::Diagnostic> workspaceDiagnostics_{};
     std::vector<skewer::core::Diagnostic> exportDiagnostics_{};
 
-    WorkspaceViewWidget* workspaceView_ = nullptr;
     ViewportWidget* viewportWidget_ = nullptr;
     ViewportController* viewportController_ = nullptr;
     FieldSceneWidget* fieldScene_ = nullptr;
@@ -110,8 +109,9 @@ private:
     EncounterEditorWidget* encounterEditor_ = nullptr;
     FormationInspectorWidget* formationInspector_ = nullptr;
     DiagnosticsWidget* diagnosticsWidget_ = nullptr;
-    QSplitter* encounterSplitter_ = nullptr;
+    QDialog* diagnosticsWindow_ = nullptr;
     QPushButton* editSummaryButton_ = nullptr;
+    QPushButton* diagnosticsSummaryButton_ = nullptr;
     VisualSettingsDialog* visualSettingsDialog_ = nullptr;
     QAction* undoAction_ = nullptr;
     QAction* redoAction_ = nullptr;

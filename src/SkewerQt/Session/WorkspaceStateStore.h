@@ -33,8 +33,7 @@ struct WorkspaceState {
     std::vector<skewer::core::TriangleKey> selection{};
     QByteArray mainWindowGeometry{};
     QByteArray mainWindowState{};
-    QByteArray encounterWorkspaceSplitterState{};
-    int diagnosticsDrawerWidth = 420;
+    QByteArray diagnosticsWindowGeometry{};
 };
 
 class WorkspaceStateStore final {
