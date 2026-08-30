@@ -73,8 +73,4 @@ SKEWER stores its `workspace` beside the executable and does not fall back to Ap
 
 SKEWER uses [SPICE](SPICE/README.md) for Dreamcast field parsing, writing, and format support. SPICE and its third-party components remain subject to their respective licenses and notices.
 
-## License and game data
-
-SKEWER does not currently declare a top-level project license. The repository contains tooling only and does not include game data, extracted assets, or reference corpora.
-
 SKEWER is an independent fan and research project and is not affiliated with or endorsed by the rights holders of *Skies of Arcadia*.
