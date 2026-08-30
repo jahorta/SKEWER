@@ -15,12 +15,18 @@ namespace skewer::qt {
 
 FieldSessionController::FieldSessionController(QObject* parent)
     : QObject(parent) {
+    alxValidationTimer_.setSingleShot(true);
+    alxValidationTimer_.setInterval(150);
     connect(&discoveryWatcher_, &QFutureWatcherBase::finished,
         this, &FieldSessionController::onDiscoveryFinished);
     connect(&fieldLoadWatcher_, &QFutureWatcherBase::finished,
         this, &FieldSessionController::onFieldLoadFinished);
     connect(&alxLoadWatcher_, &QFutureWatcherBase::finished,
         this, &FieldSessionController::onAlxLoadFinished);
+    connect(&alxValidationTimer_, &QTimer::timeout,
+        this, &FieldSessionController::startAlxValidation);
+    connect(&alxValidationWatcher_, &QFutureWatcherBase::finished,
+        this, &FieldSessionController::onAlxValidationFinished);
 }
 
 bool FieldSessionController::beginDiscovery(
@@ -29,6 +35,7 @@ bool FieldSessionController::beginDiscovery(
     currentRoot_ = QDir::cleanPath(rootPath);
     pendingRestoreField_ = std::move(restoreField);
     document_.reset();
+    requestActiveFieldAlxValidation();
     emit documentCleared();
     emit discoveryStarted();
     const auto path = std::filesystem::path(currentRoot_.toStdWString());
@@ -44,6 +51,7 @@ bool FieldSessionController::beginFieldLoad(const int catalogIndex) {
     const auto assets = catalog_.fields[static_cast<std::size_t>(catalogIndex)].assetPair();
     if (!assets.has_value()) return false;
     document_.reset();
+    requestActiveFieldAlxValidation();
     emit documentCleared();
     emit fieldLoadStarted(QString::fromStdString(assets->stem));
     fieldLoadWatcher_.setFuture(QtConcurrent::run([assets = *assets]() {
@@ -72,6 +80,7 @@ void FieldSessionController::clearAlxData() {
     pendingAlxRoot_.clear();
     alxLoadDiagnostics_.clear();
     emit alxChanged();
+    requestActiveFieldAlxValidation();
 }
 
 void FieldSessionController::restoreRememberedAlxRoot(const QString& rootPath) {
@@ -86,8 +95,8 @@ void FieldSessionController::applyTriangleSelectors(
         keys.size() == 1U
             ? "Set triangle encounter selector"
             : "Set triangle encounter selectors");
-    emit diagnosticsProduced(result.diagnostics, false);
-    if (result.changed) emit documentChanged();
+    if (result.changed) emit semanticChangesApplied(result.changes);
+    emit editDiagnosticsChanged(result.diagnostics);
 }
 
 void FieldSessionController::applyEctValue(
@@ -102,22 +111,37 @@ void FieldSessionController::applyEctValue(
                 "ECT values must be integers from 0 through 65535.",
                 document_->assets.ectPath }
         };
-        emit diagnosticsProduced(diagnostics, false);
-        emit ectEditRejected();
+        emit editDiagnosticsChanged(diagnostics);
+        emit ectEditRejected(key);
         return;
     }
     const auto result = document_->setEctValue(
         key, static_cast<std::uint16_t>(value));
-    emit diagnosticsProduced(result.diagnostics, false);
-    if (result.changed) emit documentChanged();
+    if (result.changed) emit semanticChangesApplied(result.changes);
+    emit editDiagnosticsChanged(result.diagnostics);
 }
 
 void FieldSessionController::undo() {
-    if (document_ != nullptr && document_->undo()) emit documentChanged();
+    if (document_ == nullptr) return;
+    const auto result = document_->undo();
+    if (result.changed) emit semanticChangesApplied(result.changes);
 }
 
 void FieldSessionController::redo() {
-    if (document_ != nullptr && document_->redo()) emit documentChanged();
+    if (document_ == nullptr) return;
+    const auto result = document_->redo();
+    if (result.changed) emit semanticChangesApplied(result.changes);
+}
+
+void FieldSessionController::requestActiveFieldAlxValidation() {
+    ++requestedAlxValidationRevision_;
+    alxValidationTimer_.stop();
+    if (alxDataset_ == nullptr || document_ == nullptr) {
+        alxValidationPending_ = false;
+        emit alxValidationChanged({});
+        return;
+    }
+    alxValidationTimer_.start();
 }
 
 bool FieldSessionController::discoveryRunning() const noexcept {
@@ -162,16 +186,16 @@ FieldSessionController::alxLoadDiagnostics() const noexcept {
 }
 
 bool FieldSessionController::hasAlxDataset() const noexcept {
-    return alxDataset_.has_value();
+    return alxDataset_ != nullptr;
 }
 
 QString FieldSessionController::alxLocaleName() const {
-    if (!alxDataset_.has_value()) return {};
+    if (alxDataset_ == nullptr) return {};
     return QString::fromLatin1(spice::trade::alx::toString(alxDataset_->locale()));
 }
 
 QString FieldSessionController::alxSourceRoot() const {
-    if (!alxDataset_.has_value()) return {};
+    if (alxDataset_ == nullptr) return {};
     return QString::fromStdWString(alxDataset_->sourceRoot().wstring());
 }
 
@@ -197,7 +221,7 @@ std::optional<std::int32_t> FieldSessionController::groundTblIdForEntry(
 std::optional<skewer::core::FormationResolution>
 FieldSessionController::resolveFormation(
     const int tableIndex, const int rowIndex) const {
-    if (!alxDataset_.has_value() || document_ == nullptr ||
+    if (alxDataset_ == nullptr || document_ == nullptr ||
         tableIndex < 0 || rowIndex < 0) {
         return std::nullopt;
     }
@@ -212,16 +236,6 @@ FieldSessionController::resolveFormation(
     return alxDataset_->resolveFormation(
         document_->assets.stem,
         flat->tables[table].encounters[row].encounterId);
-}
-
-std::vector<skewer::core::Diagnostic>
-FieldSessionController::validateActiveFieldAlx() const {
-    if (!alxDataset_.has_value() || document_ == nullptr) return {};
-    const auto* flat = std::get_if<spice::ect::EctFlatContent>(
-        &document_->workingEct.content);
-    if (flat == nullptr) return {};
-    return alxDataset_->validateField(
-        document_->assets.stem, *flat, document_->assets.ectPath);
 }
 
 std::vector<std::uint8_t> FieldSessionController::modifiedSceneBatches() const {
@@ -265,11 +279,55 @@ void FieldSessionController::onAlxLoadFinished() {
     completedAlxLoadInteractive_ = alxLoadInteractive_;
     alxLoadInteractive_ = false;
     if (result.ok()) {
-        alxDataset_ = std::move(*result.dataset);
+        alxDataset_ = std::make_shared<const skewer::core::AlxDataset>(
+            std::move(*result.dataset));
         alxDataRoot_ = attemptedRoot;
         emit alxChanged();
+        requestActiveFieldAlxValidation();
     }
     emit alxLoadFinished(result.ok());
+}
+
+void FieldSessionController::startAlxValidation() {
+    if (alxValidationWatcher_.isRunning()) {
+        alxValidationPending_ = true;
+        return;
+    }
+    if (alxDataset_ == nullptr || document_ == nullptr) {
+        emit alxValidationChanged({});
+        return;
+    }
+    const auto* flat = std::get_if<spice::ect::EctFlatContent>(
+        &document_->workingEct.content);
+    if (flat == nullptr) {
+        emit alxValidationChanged({});
+        return;
+    }
+    runningAlxValidationRevision_ = requestedAlxValidationRevision_;
+    const auto revision = runningAlxValidationRevision_;
+    const auto dataset = alxDataset_;
+    const auto ect = *flat;
+    const auto fieldStem = document_->assets.stem;
+    const auto ectPath = document_->assets.ectPath;
+    alxValidationPending_ = false;
+    alxValidationWatcher_.setFuture(QtConcurrent::run(
+        [revision, dataset, ect, fieldStem, ectPath]() {
+            return AlxValidationResult{
+                revision,
+                dataset->validateField(fieldStem, ect, ectPath)
+            };
+        }));
+}
+
+void FieldSessionController::onAlxValidationFinished() {
+    const auto result = alxValidationWatcher_.future().takeResult();
+    if (result.revision == requestedAlxValidationRevision_) {
+        emit alxValidationChanged(result.diagnostics);
+    }
+    if (alxValidationPending_ || result.revision != requestedAlxValidationRevision_) {
+        alxValidationPending_ = false;
+        alxValidationTimer_.start(0);
+    }
 }
 
 } // namespace skewer::qt

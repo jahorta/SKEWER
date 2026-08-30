@@ -118,6 +118,63 @@ void SceneAdapter::refreshScene() {
     rebuildScene();
 }
 
+bool SceneAdapter::updateTriangleSelectors(
+    const std::span<const skewer::core::TriangleKey> keys) {
+    if (scene_ == nullptr) return keys.empty();
+    std::map<std::size_t, std::vector<std::size_t>> dirtyVertices{};
+    std::vector<TriangleRenderLocation> locations{};
+    locations.reserve(keys.size());
+    for (const auto& key : keys) {
+        const auto found = triangleLocations_.find(key);
+        if (found == triangleLocations_.end() ||
+            found->second.empty()) {
+            return false;
+        }
+        for (const auto& location : found->second) {
+            if (location.entryIndex >= sceneGeometry_.size() ||
+                location.sceneTriangleIndex >= scene_->triangles.size()) return false;
+            locations.push_back(location);
+        }
+    }
+    for (const auto& location : locations) {
+        auto& entry = sceneGeometry_[location.entryIndex];
+        if (location.firstVertex + 3U > entry.vertices.size()) return false;
+        const auto& triangle = scene_->triangles[location.sceneTriangleIndex];
+        const auto paletteIndex = triangle.selector <= 8U ? triangle.selector : 9U;
+        const auto color = renderColor(kSelectorPalette[paletteIndex]);
+        for (std::size_t corner = 0U; corner < 3U; ++corner) {
+            auto& vertex = entry.vertices[location.firstVertex + corner];
+            vertex.r = color.r;
+            vertex.g = color.g;
+            vertex.b = color.b;
+            vertex.a = color.a;
+        }
+        dirtyVertices[location.entryIndex].push_back(location.firstVertex);
+    }
+    for (auto& [entryIndex, offsets] : dirtyVertices) {
+        auto& entry = sceneGeometry_[entryIndex];
+        std::sort(offsets.begin(), offsets.end());
+        offsets.erase(std::unique(offsets.begin(), offsets.end()), offsets.end());
+        std::size_t rangeStart = offsets.front();
+        std::size_t rangeEnd = rangeStart + 3U;
+        const auto flushRange = [&entry](const std::size_t start, const std::size_t end) {
+            return entry.geometry->updateVertexRange(start,
+                std::span<const RenderVertex>(entry.vertices).subspan(start, end - start));
+        };
+        for (std::size_t index = 1U; index < offsets.size(); ++index) {
+            if (offsets[index] == rangeEnd) {
+                rangeEnd += 3U;
+                continue;
+            }
+            if (!flushRange(rangeStart, rangeEnd)) return false;
+            rangeStart = offsets[index];
+            rangeEnd = rangeStart + 3U;
+        }
+        if (!flushRange(rangeStart, rangeEnd)) return false;
+    }
+    return true;
+}
+
 void SceneAdapter::setVisibility(std::vector<std::uint8_t> visibleBatches) {
     visibility_ = std::move(visibleBatches);
 }
@@ -174,12 +231,14 @@ const std::vector<std::uint8_t>& SceneAdapter::visibility() const noexcept {
 
 void SceneAdapter::rebuildScene() {
     sceneGeometry_.clear();
+    triangleLocations_.clear();
     if (scene_ == nullptr) return;
     sceneGeometry_.reserve(scene_->batches.size() + scene_->contextBatches.size() * 2U);
     for (std::size_t batchIndex = 0; batchIndex < scene_->batches.size(); ++batchIndex) {
         const auto& batch = scene_->batches[batchIndex];
         std::array<std::vector<RenderVertex>, 2> verticesByTraversal{};
         std::array<std::vector<skewer::core::TriangleKey>, 2> keysByTraversal{};
+        std::array<std::vector<std::size_t>, 2> indicesByTraversal{};
         for (const auto triangleIndex : batch.triangleIndices) {
             const auto& triangle = scene_->triangles[triangleIndex];
             const auto metadata = skewer::core::interpretTriangleMetadata(
@@ -190,6 +249,7 @@ void SceneAdapter::rebuildScene() {
             auto& vertices = verticesByTraversal[traversalIndex];
             vertices.reserve(vertices.size() + 3U);
             keysByTraversal[traversalIndex].push_back(triangle.key);
+            indicesByTraversal[traversalIndex].push_back(triangleIndex);
             const auto paletteIndex = triangle.selector <= 8U ? triangle.selector : 9U;
             appendTriangle(vertices, triangle,
                 renderColor(kSelectorPalette[paletteIndex]),
@@ -206,6 +266,16 @@ void SceneAdapter::rebuildScene() {
             entry.traversalBarrier = traversal != 0U;
             entry.geometry->setTriangles(entry.vertices);
             QQmlEngine::setObjectOwnership(entry.geometry.get(), QQmlEngine::CppOwnership);
+            const auto entryIndex = sceneGeometry_.size();
+            for (std::size_t triangle = 0U;
+                triangle < entry.triangleKeys.size(); ++triangle) {
+                triangleLocations_[entry.triangleKeys[triangle]].push_back(
+                    TriangleRenderLocation{
+                        entryIndex,
+                        indicesByTraversal[traversal][triangle],
+                        triangle * 3U
+                    });
+            }
             sceneGeometry_.push_back(std::move(entry));
         }
     }

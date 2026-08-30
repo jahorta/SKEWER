@@ -1,6 +1,7 @@
 #include "FieldDocument.h"
 
 #include <algorithm>
+#include <array>
 #include <set>
 #include <tuple>
 #include <type_traits>
@@ -38,17 +39,65 @@ bool sameKey(const TriangleKey& lhs, const TriangleKey& rhs) {
     return !less(lhs, rhs) && !less(rhs, lhs);
 }
 
+DocumentChangeSet changeSetFor(const EditTransaction& transaction) {
+    DocumentChangeSet result{};
+    for (const auto& change : transaction.changes) {
+        std::visit([&](const auto& typed) {
+            using T = std::decay_t<decltype(typed)>;
+            if constexpr (std::is_same_v<T, TriangleSelectorChange>) {
+                result.triangleSelectorKeys.push_back(typed.key);
+            } else {
+                result.ectValueKeys.push_back(typed.key);
+            }
+        }, change);
+    }
+    return result;
+}
+
 } // namespace
 
 bool EctValueKey::operator<(const EctValueKey& other) const noexcept {
     return std::tie(tableIndex, rowIndex, kind) < std::tie(other.tableIndex, other.rowIndex, other.kind);
 }
 
+void DocumentChangeSet::merge(const DocumentChangeSet& other) {
+    triangleSelectorKeys.insert(triangleSelectorKeys.end(),
+        other.triangleSelectorKeys.begin(), other.triangleSelectorKeys.end());
+    ectValueKeys.insert(ectValueKeys.end(),
+        other.ectValueKeys.begin(), other.ectValueKeys.end());
+    std::sort(triangleSelectorKeys.begin(), triangleSelectorKeys.end(), TriangleKeyLess{});
+    triangleSelectorKeys.erase(std::unique(triangleSelectorKeys.begin(),
+        triangleSelectorKeys.end(), [](const auto& lhs, const auto& rhs) {
+            return sameKey(lhs, rhs);
+        }), triangleSelectorKeys.end());
+    std::sort(ectValueKeys.begin(), ectValueKeys.end());
+    ectValueKeys.erase(std::unique(ectValueKeys.begin(), ectValueKeys.end()),
+        ectValueKeys.end());
+}
+
+void FieldDocument::ensureTriangleIndex() const {
+    if (indexedTriangleData_ == scene.triangles.data() &&
+        indexedTriangleCount_ == scene.triangles.size()) return;
+    triangleIndices_.clear();
+    for (std::size_t index = 0U; index < scene.triangles.size(); ++index) {
+        triangleIndices_[scene.triangles[index].key].push_back(index);
+    }
+    indexedTriangleData_ = scene.triangles.data();
+    indexedTriangleCount_ = scene.triangles.size();
+}
+
+const std::vector<std::size_t>* FieldDocument::sceneTriangleIndices(
+    const TriangleKey& key) const {
+    ensureTriangleIndex();
+    const auto found = triangleIndices_.find(key);
+    return found == triangleIndices_.end() ? nullptr : &found->second;
+}
+
 std::optional<std::uint8_t> FieldDocument::baselineSelector(const TriangleKey& key) const {
-    const auto found = std::find_if(scene.triangles.begin(), scene.triangles.end(),
-        [&](const SceneTriangle& triangle) { return sameKey(triangle.key, key); });
-    if (found == scene.triangles.end()) return std::nullopt;
-    const auto selector = decodeEncounterSelector(found->rawMetadata[2]);
+    const auto* indices = sceneTriangleIndices(key);
+    if (indices == nullptr || indices->empty()) return std::nullopt;
+    const auto selector = decodeEncounterSelector(
+        scene.triangles[indices->front()].rawMetadata[2]);
     return selector <= 9U ? std::optional<std::uint8_t>{ selector } : std::nullopt;
 }
 
@@ -89,6 +138,7 @@ EditResult FieldDocument::setTriangleSelectors(const std::span<const TriangleKey
         if (*current != selector) transaction.changes.push_back(TriangleSelectorChange{ key, *current, selector });
     }
     if (transaction.changes.empty()) return result;
+    result.changes = changeSetFor(transaction);
     for (const auto& change : transaction.changes) applyChange(change, true);
     pushTransaction(std::move(transaction));
     result.changed = true;
@@ -109,9 +159,9 @@ EditResult FieldDocument::setEctValue(const EctValueKey& key, const std::uint16_
     if (*current == value) return result;
     EditTransaction transaction{ std::move(label), { EctValueChange{ key, *current, value } } };
     applyChange(transaction.changes.front(), true);
+    result.changes = changeSetFor(transaction);
     pushTransaction(std::move(transaction));
     result.changed = true;
-    result.diagnostics = validateWorkingEct();
     return result;
 }
 
@@ -128,6 +178,7 @@ EditResult FieldDocument::restoreAll() {
         if (baseline.has_value()) transaction.changes.push_back(EctValueChange{ key, value, *baseline });
     }
     if (transaction.changes.empty()) return result;
+    result.changes = changeSetFor(transaction);
     for (const auto& change : transaction.changes) applyChange(change, true);
     pushTransaction(std::move(transaction));
     result.changed = true;
@@ -137,22 +188,28 @@ EditResult FieldDocument::restoreAll() {
 bool FieldDocument::canUndo() const noexcept { return !undoStack_.empty(); }
 bool FieldDocument::canRedo() const noexcept { return !redoStack_.empty(); }
 
-bool FieldDocument::undo() {
-    if (undoStack_.empty()) return false;
+EditResult FieldDocument::undo() {
+    EditResult result{};
+    if (undoStack_.empty()) return result;
     auto transaction = std::move(undoStack_.back());
     undoStack_.pop_back();
+    result.changes = changeSetFor(transaction);
     for (auto it = transaction.changes.rbegin(); it != transaction.changes.rend(); ++it) applyChange(*it, false);
     redoStack_.push_back(std::move(transaction));
-    return true;
+    result.changed = true;
+    return result;
 }
 
-bool FieldDocument::redo() {
-    if (redoStack_.empty()) return false;
+EditResult FieldDocument::redo() {
+    EditResult result{};
+    if (redoStack_.empty()) return result;
     auto transaction = std::move(redoStack_.back());
     redoStack_.pop_back();
+    result.changes = changeSetFor(transaction);
     for (const auto& change : transaction.changes) applyChange(change, true);
     undoStack_.push_back(std::move(transaction));
-    return true;
+    result.changed = true;
+    return result;
 }
 
 bool FieldDocument::isDirty() const noexcept { return !selectorEdits_.empty() || !ectEdits_.empty(); }
@@ -165,7 +222,25 @@ std::vector<Diagnostic> FieldDocument::validateWorkingEct() const {
     std::vector<Diagnostic> result{};
     const auto* flat = flatContent(workingEct);
     if (flat == nullptr) return result;
+    std::array<bool, 8U> usedSelectors{};
+    if (mld.sourcePlatform ==
+        spice::mld::model::TargetPlatform::Dreamcast) {
+        for (const auto& triangle : scene.triangles) {
+            if (triangle.selector >= 1U && triangle.selector <= 8U) {
+                usedSelectors[triangle.selector - 1U] = true;
+            }
+        }
+    }
     for (std::size_t tableIndex = 0; tableIndex < flat->tables.size(); ++tableIndex) {
+        if (tableIndex < usedSelectors.size() && usedSelectors[tableIndex] &&
+            flat->tables[tableIndex].stage == 0U) {
+            result.push_back({ DiagnosticSeverity::Error,
+                "Encounter selector " + std::to_string(tableIndex + 1U) +
+                    " is used by field triangles, but encounter table " +
+                    std::to_string(tableIndex + 1U) +
+                    " has battle stage 0.",
+                assets.ectPath });
+        }
         std::uint64_t total = 0;
         bool largeWeight = false;
         for (const auto& row : flat->tables[tableIndex].encounters) {
@@ -195,7 +270,10 @@ void FieldDocument::applySelectorValue(const TriangleKey& key, const std::uint8_
     const auto baseline = baselineSelector(key);
     if (baseline.has_value() && *baseline == value) selectorEdits_.erase(key);
     else selectorEdits_[key] = value;
-    for (auto& triangle : scene.triangles) if (sameKey(triangle.key, key)) triangle.selector = value;
+    const auto* indices = sceneTriangleIndices(key);
+    if (indices != nullptr) {
+        for (const auto index : *indices) scene.triangles[index].selector = value;
+    }
 }
 
 void FieldDocument::applyEctValue(const EctValueKey& key, const std::uint16_t value) {

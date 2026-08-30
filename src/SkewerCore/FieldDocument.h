@@ -48,8 +48,20 @@ struct EditTransaction {
     std::vector<SemanticChange> changes{};
 };
 
+struct DocumentChangeSet {
+    std::vector<TriangleKey> triangleSelectorKeys{};
+    std::vector<EctValueKey> ectValueKeys{};
+
+    [[nodiscard]] bool empty() const noexcept {
+        return triangleSelectorKeys.empty() && ectValueKeys.empty();
+    }
+
+    void merge(const DocumentChangeSet& other);
+};
+
 struct EditResult {
     bool changed = false;
+    DocumentChangeSet changes{};
     std::vector<Diagnostic> diagnostics{};
     [[nodiscard]] bool ok() const noexcept { return !hasErrors(diagnostics); }
 };
@@ -76,8 +88,8 @@ struct FieldDocument {
     [[nodiscard]] EditResult restoreAll();
     [[nodiscard]] bool canUndo() const noexcept;
     [[nodiscard]] bool canRedo() const noexcept;
-    [[nodiscard]] bool undo();
-    [[nodiscard]] bool redo();
+    [[nodiscard]] EditResult undo();
+    [[nodiscard]] EditResult redo();
     [[nodiscard]] bool isDirty() const noexcept;
     [[nodiscard]] bool isTriangleModified(const TriangleKey& key) const;
     [[nodiscard]] bool isEctValueModified(const EctValueKey& key) const;
@@ -87,6 +99,9 @@ struct FieldDocument {
     void clearHistory();
 
 private:
+    [[nodiscard]] const std::vector<std::size_t>* sceneTriangleIndices(
+        const TriangleKey& key) const;
+    void ensureTriangleIndex() const;
     void applyChange(const SemanticChange& change, bool forward);
     void applySelectorValue(const TriangleKey& key, std::uint8_t value);
     void applyEctValue(const EctValueKey& key, std::uint16_t value);
@@ -96,6 +111,10 @@ private:
     std::map<EctValueKey, std::uint16_t> ectEdits_{};
     std::vector<EditTransaction> undoStack_{};
     std::vector<EditTransaction> redoStack_{};
+    mutable std::map<TriangleKey, std::vector<std::size_t>, TriangleKeyLess>
+        triangleIndices_{};
+    mutable const SceneTriangle* indexedTriangleData_ = nullptr;
+    mutable std::size_t indexedTriangleCount_ = 0U;
 };
 
 } // namespace skewer::core

@@ -74,17 +74,20 @@ private:
     void buildUi();
     void connectControllers();
     void applyDocument();
-    void refreshAfterSemanticEdit();
+    void handleSemanticChanges(const skewer::core::DocumentChangeSet& changes);
     void refreshEncounterTable(int tableIndex);
     void updateEditingState();
     void updateFormationDock();
-    void refreshAlxFieldDiagnostics();
+    void refreshEctValidation();
+    void requestAlxFieldValidation();
     void restoreDocumentState();
     void applyVisualSettings(const VisualSettings& settings, bool checkpoint);
     void showVisualSettingsDialog();
     void updateEditSummary();
     void updateDiagnosticsButton();
     void renderDiagnostics();
+    void handleCheckpointOutcome(const WorkspaceCheckpointOutcome& outcome);
+    [[nodiscard]] bool flushCheckpoint();
     void appendFieldDiagnostics(
         const std::vector<skewer::core::Diagnostic>& diagnostics,
         bool clearFirst);
@@ -98,10 +101,13 @@ private:
     WorkspaceController workspace_;
     FieldSessionController session_;
     std::vector<skewer::core::Diagnostic> fieldDiagnostics_{};
+    std::vector<skewer::core::Diagnostic> editDiagnostics_{};
+    std::vector<skewer::core::Diagnostic> ectValidationDiagnostics_{};
     std::vector<skewer::core::Diagnostic> alxLoadDiagnostics_{};
     std::vector<skewer::core::Diagnostic> alxFieldDiagnostics_{};
     std::vector<skewer::core::Diagnostic> viewportDiagnostics_{};
     std::vector<skewer::core::Diagnostic> workspaceDiagnostics_{};
+    std::vector<skewer::core::Diagnostic> checkpointDiagnostics_{};
     std::vector<skewer::core::Diagnostic> exportDiagnostics_{};
 
     ViewportWidget* viewportWidget_ = nullptr;

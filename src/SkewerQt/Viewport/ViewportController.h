@@ -23,6 +23,8 @@ public:
 
     void setScene(const skewer::core::SceneModel* scene);
     void refreshScene();
+    void updateTriangleSelectors(
+        std::span<const skewer::core::TriangleKey> keys);
     void setVisibility(std::vector<std::uint8_t> visibility);
     void setContextOpacity(int percent);
     void setVisualSettings(const VisualSettings& settings);

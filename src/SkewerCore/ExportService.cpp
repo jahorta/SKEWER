@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
@@ -95,6 +96,16 @@ std::vector<std::uint8_t> readBytes(const std::filesystem::path& path) {
     return { std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
 }
 
+std::filesystem::path uppercaseDreamcastBasename(
+    const std::string_view basename) {
+    std::string result(basename);
+    std::transform(result.begin(), result.end(), result.begin(),
+        [](const unsigned char ch) {
+            return static_cast<char>(std::toupper(ch));
+        });
+    return result;
+}
+
 std::string sha256(std::span<const std::uint8_t> input) {
     constexpr std::array<std::uint32_t, 64> constants{
         0x428a2f98U,0x71374491U,0xb5c0fbcfU,0xe9b5dba5U,0x3956c25bU,0x59f111f1U,0x923f82a4U,0xab1c5ed5U,
@@ -174,6 +185,13 @@ ExportPreflightResult ExportService::preflight(const std::filesystem::path& fiel
                 patch.stem + ": " + conflict.message + " Current source remains active until the patch is explicitly rebased." });
         }
         if (!restored.conflicts.empty() || hasErrors(restored.diagnostics)) continue;
+        const auto workingValidation = document.validateWorkingEct();
+        for (auto diagnostic : workingValidation) {
+            if (diagnostic.severity != DiagnosticSeverity::Error) continue;
+            diagnostic.message = patch.stem + ": " + diagnostic.message;
+            result.diagnostics.push_back(std::move(diagnostic));
+        }
+        if (hasErrors(workingValidation)) continue;
         for (const auto& edit : restored.preservedTriangleEdits) {
             result.alreadyAppliedEntries.push_back(patch.stem + ": " + keyDescription(edit.key));
         }
@@ -182,6 +200,8 @@ ExportPreflightResult ExportService::preflight(const std::filesystem::path& fiel
         }
 
         if (!document.ectEdits().empty()) {
+            const auto outputBasename = uppercaseDreamcastBasename(
+                patch.ectFile);
             spice::ect::EctFileWriter writer{};
             auto written = writer.write(document.workingEct, spice::ect::EctTargetPlatform::Dreamcast);
             for (const auto& diagnostic : written.diagnostics) result.diagnostics.push_back({ mapEct(diagnostic.severity), patch.stem + ": " + diagnostic.message, assets.ectPath });
@@ -190,15 +210,17 @@ ExportPreflightResult ExportService::preflight(const std::filesystem::path& fiel
             for (const auto& diagnostic : reparsed.diagnostics) result.diagnostics.push_back({ mapEct(diagnostic.severity), patch.stem + ": candidate ECT: " + diagnostic.message });
             if (!reparsed.ok() || *reparsed.file != document.workingEct) {
                 result.diagnostics.push_back({ DiagnosticSeverity::Error, patch.stem + ": candidate ECT did not round-trip to the working model." });
-            } else if (!basenames.insert(patch.ectFile).second) {
+            } else if (!basenames.insert(outputBasename.string()).second) {
                 result.diagnostics.push_back({ DiagnosticSeverity::Error, "Selected patches produce duplicate output basenames." });
             } else {
-                result.assets.push_back({ patch.stem, assets.ectPath, patch.ectFile,
+                result.assets.push_back({ patch.stem, assets.ectPath, outputBasename,
                     std::move(written.bytes), sha256(readBytes(assets.ectPath)) });
             }
         }
 
         if (!document.selectorEdits().empty()) {
+            const auto outputBasename = uppercaseDreamcastBasename(
+                patch.mldFile);
             std::vector<DreamcastTriangleSelectorEdit> edits{};
             for (const auto& [key, selector] : document.selectorEdits()) edits.push_back(toSpiceEdit(key, selector));
             const auto plan = spice::mld::patching::planDreamcastTriangleSelectorPatches(document.mld, edits);
@@ -222,10 +244,10 @@ ExportPreflightResult ExportService::preflight(const std::filesystem::path& fiel
             }
             if (!matches) {
                 result.diagnostics.push_back({ DiagnosticSeverity::Error, patch.stem + ": candidate MLD did not reparse with all requested selectors." });
-            } else if (!basenames.insert(patch.mldFile).second) {
+            } else if (!basenames.insert(outputBasename.string()).second) {
                 result.diagnostics.push_back({ DiagnosticSeverity::Error, "Selected patches produce duplicate output basenames." });
             } else {
-                result.assets.push_back({ patch.stem, assets.mldPath, patch.mldFile, std::move(bytes), sha256(document.mld.sourceBytes) });
+                result.assets.push_back({ patch.stem, assets.mldPath, outputBasename, std::move(bytes), sha256(document.mld.sourceBytes) });
             }
         }
     }

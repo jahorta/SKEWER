@@ -5,9 +5,12 @@
 #include "SkewerCore/FieldPatch.h"
 
 #include <QObject>
+#include <QFutureWatcher>
 #include <QString>
 #include <QTimer>
 
+#include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -21,8 +24,20 @@ enum class WorkspaceCheckpointResult {
     StateFailed,
 };
 
+struct WorkspaceCheckpointOutcome {
+    std::uint64_t revision = 0U;
+    WorkspaceCheckpointResult result = WorkspaceCheckpointResult::Success;
+    std::vector<skewer::core::Diagnostic> diagnostics{};
+    QString errorString{};
+
+    [[nodiscard]] bool ok() const noexcept {
+        return result == WorkspaceCheckpointResult::Success;
+    }
+};
+
 struct WorkspaceRebaseResult {
     bool changed = false;
+    skewer::core::DocumentChangeSet changes{};
     std::vector<skewer::core::Diagnostic> diagnostics{};
 };
 
@@ -47,10 +62,12 @@ public:
 
     void scheduleCheckpoint();
     void stopCheckpoint();
-    [[nodiscard]] WorkspaceCheckpointResult checkpoint(
+    void beginCheckpoint(
         const skewer::core::FieldDocument* document,
-        const WorkspaceState& state,
-        std::vector<skewer::core::Diagnostic>& diagnostics);
+        const WorkspaceState& state);
+    [[nodiscard]] WorkspaceCheckpointOutcome flushCheckpoint(
+        const skewer::core::FieldDocument* document,
+        const WorkspaceState& state);
 
     [[nodiscard]] std::vector<skewer::core::Diagnostic> restoreFieldPatch(
         skewer::core::FieldDocument& document);
@@ -73,19 +90,37 @@ public:
 
 signals:
     void checkpointRequested();
+    void checkpointFinished(const WorkspaceCheckpointOutcome& outcome);
 
 private:
-    [[nodiscard]] bool checkpointFieldPatch(
+    struct WorkspaceCheckpointPayload {
+        std::uint64_t revision = 0U;
+        bool hasDocument = false;
+        skewer::core::FieldPatch patch{};
+        WorkspaceState state{};
+    };
+
+    [[nodiscard]] WorkspaceCheckpointPayload makeCheckpointPayload(
         const skewer::core::FieldDocument* document,
-        std::vector<skewer::core::Diagnostic>& diagnostics);
+        const WorkspaceState& state);
+    void startCheckpoint(WorkspaceCheckpointPayload payload);
+    void onCheckpointFinished();
+    [[nodiscard]] static WorkspaceCheckpointOutcome performCheckpoint(
+        const std::filesystem::path& workspaceDirectory,
+        const QString& statePath,
+        const WorkspaceCheckpointPayload& payload);
 
     WorkspaceStateStore stateStore_;
     std::optional<WorkspaceState> startupState_{};
     QTimer checkpointTimer_{};
+    QFutureWatcher<WorkspaceCheckpointOutcome> checkpointWatcher_{};
+    QMetaObject::Connection checkpointFinishedConnection_{};
+    std::optional<WorkspaceCheckpointPayload> pendingCheckpoint_{};
     skewer::core::FieldPatchStore patchStore_;
     std::vector<skewer::core::TriangleSelectorPatchEdit> preservedTriangleEdits_{};
     std::vector<skewer::core::EctValuePatchEdit> preservedEctEdits_{};
     std::vector<skewer::core::PatchConflict> patchConflicts_{};
+    std::uint64_t nextCheckpointRevision_ = 0U;
 };
 
 } // namespace skewer::qt

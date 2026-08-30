@@ -26,6 +26,14 @@ public:
         const skewer::core::FieldDocument* document,
         int tableIndex,
         const std::vector<std::optional<skewer::core::FormationResolution>>& formations);
+    void updateEctValue(
+        const skewer::core::FieldDocument* document,
+        const skewer::core::EctValueKey& key);
+    void updateFormation(
+        int tableIndex,
+        int rowIndex,
+        const std::optional<skewer::core::FormationResolution>& formation,
+        bool alxAvailable);
     void selectTable(int tableIndex);
     void restoreTable(int tableIndex);
     void setWritable(bool writable);

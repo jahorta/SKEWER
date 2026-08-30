@@ -15,6 +15,7 @@ SelectorGeometry::SelectorGeometry(QQuick3DObject* parent)
 
 void SelectorGeometry::setTriangles(const std::vector<RenderVertex>& vertices) {
     clear();
+    vertexCount_ = vertices.size();
     setPrimitiveType(PrimitiveType::Triangles);
     if (vertices.empty()) {
         update();
@@ -46,6 +47,20 @@ void SelectorGeometry::setTriangles(const std::vector<RenderVertex>& vertices) {
     }
     setBounds(minimum, maximum);
     update();
+}
+
+bool SelectorGeometry::updateVertexRange(
+    const std::size_t firstVertex,
+    const std::span<const RenderVertex> vertices) {
+    if (vertices.empty()) return true;
+    if (firstVertex >= vertexCount_ ||
+        vertices.size() > vertexCount_ - firstVertex) return false;
+    QByteArray data{};
+    data.resize(static_cast<qsizetype>(vertices.size_bytes()));
+    std::memcpy(data.data(), vertices.data(), vertices.size_bytes());
+    setVertexData(static_cast<int>(firstVertex * sizeof(RenderVertex)), data);
+    update();
+    return true;
 }
 
 } // namespace skewer::qt

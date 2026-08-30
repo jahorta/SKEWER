@@ -8,6 +8,7 @@
 #include <QFutureWatcher>
 #include <QObject>
 #include <QString>
+#include <QTimer>
 
 #include <cstdint>
 #include <filesystem>
@@ -35,6 +36,7 @@ public:
     void applyEctValue(const skewer::core::EctValueKey& key, const QString& text);
     void undo();
     void redo();
+    void requestActiveFieldAlxValidation();
 
     [[nodiscard]] bool discoveryRunning() const noexcept;
     [[nodiscard]] bool fieldLoadRunning() const noexcept;
@@ -56,7 +58,6 @@ public:
         std::size_t entryTableIndex) const;
     [[nodiscard]] std::optional<skewer::core::FormationResolution> resolveFormation(
         int tableIndex, int rowIndex) const;
-    [[nodiscard]] std::vector<skewer::core::Diagnostic> validateActiveFieldAlx() const;
     [[nodiscard]] std::vector<std::uint8_t> modifiedSceneBatches() const;
 
 signals:
@@ -68,8 +69,12 @@ signals:
     void alxLoadFinished(bool success);
     void alxChanged();
     void documentCleared();
-    void documentChanged();
-    void ectEditRejected();
+    void semanticChangesApplied(const skewer::core::DocumentChangeSet& changes);
+    void ectEditRejected(const skewer::core::EctValueKey& key);
+    void alxValidationChanged(
+        const std::vector<skewer::core::Diagnostic>& diagnostics);
+    void editDiagnosticsChanged(
+        const std::vector<skewer::core::Diagnostic>& diagnostics);
     void diagnosticsProduced(
         const std::vector<skewer::core::Diagnostic>& diagnostics,
         bool replaceGeneral);
@@ -78,10 +83,19 @@ private:
     void onDiscoveryFinished();
     void onFieldLoadFinished();
     void onAlxLoadFinished();
+    void startAlxValidation();
+    void onAlxValidationFinished();
+
+    struct AlxValidationResult {
+        std::uint64_t revision = 0U;
+        std::vector<skewer::core::Diagnostic> diagnostics{};
+    };
 
     QFutureWatcher<skewer::core::FieldDiscoveryResult> discoveryWatcher_{};
     QFutureWatcher<skewer::core::FieldLoadResult> fieldLoadWatcher_{};
     QFutureWatcher<skewer::core::AlxLoadResult> alxLoadWatcher_{};
+    QFutureWatcher<AlxValidationResult> alxValidationWatcher_{};
+    QTimer alxValidationTimer_{};
     skewer::core::FieldDiscoveryResult catalog_{};
     QString pendingRestoreField_{};
     QString currentRoot_{};
@@ -90,8 +104,11 @@ private:
     bool alxLoadInteractive_ = false;
     bool completedAlxLoadInteractive_ = false;
     std::vector<skewer::core::Diagnostic> alxLoadDiagnostics_{};
-    std::optional<skewer::core::AlxDataset> alxDataset_{};
+    std::shared_ptr<const skewer::core::AlxDataset> alxDataset_{};
     std::unique_ptr<skewer::core::FieldDocument> document_{};
+    std::uint64_t requestedAlxValidationRevision_ = 0U;
+    std::uint64_t runningAlxValidationRevision_ = 0U;
+    bool alxValidationPending_ = false;
 };
 
 } // namespace skewer::qt

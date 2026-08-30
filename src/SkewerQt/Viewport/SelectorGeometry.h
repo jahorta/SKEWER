@@ -3,6 +3,7 @@
 #include <QtQuick3D/qquick3dgeometry.h>
 
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace skewer::qt {
@@ -29,6 +30,11 @@ public:
     explicit SelectorGeometry(QQuick3DObject* parent = nullptr);
 
     void setTriangles(const std::vector<RenderVertex>& vertices);
+    [[nodiscard]] bool updateVertexRange(
+        std::size_t firstVertex, std::span<const RenderVertex> vertices);
+
+private:
+    std::size_t vertexCount_ = 0U;
 };
 
 } // namespace skewer::qt

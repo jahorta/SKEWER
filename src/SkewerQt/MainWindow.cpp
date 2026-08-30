@@ -385,9 +385,13 @@ void MainWindow::connectControllers() {
         this, [this]() {
             viewportController_->setScene(nullptr);
             workspace_.clearActiveFieldState();
+            editDiagnostics_.clear();
+            ectValidationDiagnostics_.clear();
+            alxFieldDiagnostics_.clear();
             refreshEncounterTable(encounterEditor_->currentTableIndex());
             updateInspector();
             updateEditSummary();
+            renderDiagnostics();
         });
     connect(&session_, &FieldSessionController::discoveryStarted,
         this, [this]() {
@@ -428,11 +432,22 @@ void MainWindow::connectControllers() {
         });
     connect(&session_, &FieldSessionController::alxLoadFinished,
         this, &MainWindow::onAlxLoadFinished);
-    connect(&session_, &FieldSessionController::documentChanged,
-        this, &MainWindow::refreshAfterSemanticEdit);
+    connect(&session_, &FieldSessionController::semanticChangesApplied,
+        this, &MainWindow::handleSemanticChanges);
     connect(&session_, &FieldSessionController::ectEditRejected,
-        this, [this]() {
-            refreshEncounterTable(encounterEditor_->currentTableIndex());
+        this, [this](const skewer::core::EctValueKey& key) {
+            encounterEditor_->updateEctValue(session_.document(), key);
+        });
+    connect(&session_, &FieldSessionController::editDiagnosticsChanged,
+        this, [this](const auto& diagnostics) {
+            if (editDiagnostics_ == diagnostics) return;
+            editDiagnostics_ = diagnostics;
+            renderDiagnostics();
+        });
+    connect(&session_, &FieldSessionController::alxValidationChanged,
+        this, [this](const auto& diagnostics) {
+            alxFieldDiagnostics_ = diagnostics;
+            renderDiagnostics();
         });
 
     connect(viewportController_, &ViewportController::selectionChanged,
@@ -454,6 +469,8 @@ void MainWindow::connectControllers() {
         });
     connect(&workspace_, &WorkspaceController::checkpointRequested,
         this, &MainWindow::saveCheckpoint);
+    connect(&workspace_, &WorkspaceController::checkpointFinished,
+        this, &MainWindow::handleCheckpointOutcome);
     if (!viewportController_->loadDiagnostics().empty()) {
         viewportDiagnostics_ = viewportController_->loadDiagnostics();
         renderDiagnostics();
@@ -471,7 +488,7 @@ void MainWindow::chooseGameDataRoot() {
 
     if (!session_.currentRoot().isEmpty() &&
         QDir::cleanPath(directory) != QDir::cleanPath(session_.currentRoot())) {
-        saveCheckpoint();
+        if (!flushCheckpoint()) return;
         std::vector<skewer::core::Diagnostic> diagnostics{};
         const auto patches = workspace_.listPatchStems(diagnostics);
         appendBoundedDiagnostics(workspaceDiagnostics_, diagnostics, false);
@@ -566,7 +583,7 @@ void MainWindow::onFieldChanged(const int catalogIndex) {
     if (static_cast<std::size_t>(catalogIndex) >= catalog.fields.size()) return;
     if (!catalog.fields[static_cast<std::size_t>(catalogIndex)]
             .assetPair().has_value()) return;
-    saveCheckpoint();
+    if (!flushCheckpoint()) return;
     session_.beginFieldLoad(catalogIndex);
 }
 
@@ -591,7 +608,8 @@ void MainWindow::onAlxLoadFinished(const bool success) {
     refreshAlxAction_->setEnabled(!session_.alxDataRoot().isEmpty());
     if (success) {
         clearAlxAction_->setEnabled(true);
-        refreshAlxFieldDiagnostics();
+        alxFieldDiagnostics_.clear();
+        requestAlxFieldValidation();
         updateFormationDock();
         scheduleCheckpoint();
         statusBar()->showMessage(wasRefresh
@@ -600,7 +618,7 @@ void MainWindow::onAlxLoadFinished(const bool success) {
     } else {
         clearAlxAction_->setEnabled(
             session_.hasAlxDataset() || !session_.alxDataRoot().isEmpty());
-        refreshAlxFieldDiagnostics();
+        requestAlxFieldValidation();
         updateFormationDock();
         statusBar()->showMessage(wasRefresh
             ? QStringLiteral(
@@ -645,8 +663,12 @@ void MainWindow::applyDocument() {
     refreshEncounterTable(
         encounterEditor_->currentTableIndex() < 0
             ? 0 : encounterEditor_->currentTableIndex());
-    refreshAlxFieldDiagnostics();
+    refreshEctValidation();
+    requestAlxFieldValidation();
     updateFormationDock();
+    updateInspector();
+    fieldScene_->setEncounterBatchModified(
+        session_.modifiedSceneBatches());
     updateEditingState();
     statusBar()->showMessage(QStringLiteral(
         "Loaded %1: %2 encounter triangles in %3 batches; "
@@ -746,14 +768,46 @@ void MainWindow::redoEdit() {
     session_.redo();
 }
 
-void MainWindow::refreshAfterSemanticEdit() {
+void MainWindow::handleSemanticChanges(
+    const skewer::core::DocumentChangeSet& changes) {
     auto* document = session_.document();
     if (document == nullptr) return;
-    viewportController_->refreshScene();
-    updateInspector();
-    refreshEncounterTable(encounterEditor_->currentTableIndex());
-    refreshAlxFieldDiagnostics();
-    updateFormationDock();
+    const bool clearedEditDiagnostics = !editDiagnostics_.empty();
+    editDiagnostics_.clear();
+    if (!changes.triangleSelectorKeys.empty()) {
+        viewportController_->updateTriangleSelectors(
+            changes.triangleSelectorKeys);
+        updateInspector();
+        fieldScene_->setEncounterBatchModified(
+            session_.modifiedSceneBatches());
+    }
+    bool validateAlx = false;
+    bool updateSelectedFormation = false;
+    for (const auto& key : changes.ectValueKeys) {
+        encounterEditor_->updateEctValue(document, key);
+        if (key.kind == skewer::core::EctValueKind::EncounterId) {
+            encounterEditor_->updateFormation(
+                static_cast<int>(key.tableIndex),
+                static_cast<int>(key.rowIndex),
+                session_.resolveFormation(
+                    static_cast<int>(key.tableIndex),
+                    static_cast<int>(key.rowIndex)),
+                session_.hasAlxDataset());
+            updateSelectedFormation = updateSelectedFormation ||
+                encounterEditor_->currentTableIndex() ==
+                    static_cast<int>(key.tableIndex) &&
+                encounterEditor_->currentRowIndex() ==
+                    static_cast<int>(key.rowIndex);
+        }
+        validateAlx = validateAlx ||
+            key.kind == skewer::core::EctValueKind::EncounterId ||
+            key.kind == skewer::core::EctValueKind::Weight;
+    }
+    if (!changes.ectValueKeys.empty() ||
+        !changes.triangleSelectorKeys.empty()) refreshEctValidation();
+    else if (clearedEditDiagnostics) renderDiagnostics();
+    if (validateAlx) requestAlxFieldValidation();
+    if (updateSelectedFormation) updateFormationDock();
     updateEditingState();
     scheduleCheckpoint();
 }
@@ -762,14 +816,11 @@ void MainWindow::updateEditingState() {
     auto* document = session_.document();
     const bool writable = document != nullptr &&
         !document->readOnly && workspace_.isWritable();
-    updateInspector();
     encounterEditor_->setWritable(writable);
     undoAction_->setEnabled(writable && document != nullptr && document->canUndo());
     redoAction_->setEnabled(writable && document != nullptr && document->canRedo());
     fieldScene_->setRebaseState(workspace_.hasConflicts(), writable);
     if (document != nullptr) {
-        fieldScene_->setEncounterBatchModified(
-            session_.modifiedSceneBatches());
         setWindowTitle(QStringLiteral("SKEWER - %1%2")
             .arg(QString::fromStdString(document->assets.stem))
             .arg(workspace_.hasPatchContent(document)
@@ -791,11 +842,11 @@ void MainWindow::rebaseConflicts() {
     const auto result = workspace_.rebaseConflicts(*document);
     appendBoundedDiagnostics(workspaceDiagnostics_, result.diagnostics, true);
     renderDiagnostics();
-    refreshAfterSemanticEdit();
+    if (result.changed) handleSemanticChanges(result.changes);
 }
 
 bool MainWindow::exportPatches() {
-    saveCheckpoint();
+    if (!flushCheckpoint()) return false;
     exportDiagnostics_.clear();
     renderDiagnostics();
     const auto& catalog = session_.catalog();
@@ -995,9 +1046,15 @@ void MainWindow::updateFormationDock() {
     formationInspector_->showFormation(*formation);
 }
 
-void MainWindow::refreshAlxFieldDiagnostics() {
-    alxFieldDiagnostics_ = session_.validateActiveFieldAlx();
+void MainWindow::refreshEctValidation() {
+    ectValidationDiagnostics_ = session_.document() == nullptr
+        ? std::vector<skewer::core::Diagnostic>{}
+        : session_.document()->validateWorkingEct();
     renderDiagnostics();
+}
+
+void MainWindow::requestAlxFieldValidation() {
+    session_.requestActiveFieldAlxValidation();
 }
 
 void MainWindow::frameAll() {
@@ -1169,18 +1226,36 @@ WorkspaceState MainWindow::captureState() const {
 
 void MainWindow::saveCheckpoint() {
     if (!workspace_.isWritable()) return;
-    std::vector<skewer::core::Diagnostic> diagnostics{};
-    const auto result = workspace_.checkpoint(
-        session_.document(), captureState(), diagnostics);
-    appendBoundedDiagnostics(workspaceDiagnostics_, diagnostics, false);
+    workspace_.beginCheckpoint(session_.document(), captureState());
+}
+
+bool MainWindow::flushCheckpoint() {
+    if (!workspace_.isWritable()) return true;
+    const auto outcome = workspace_.flushCheckpoint(
+        session_.document(), captureState());
+    handleCheckpointOutcome(outcome);
+    return outcome.ok();
+}
+
+void MainWindow::handleCheckpointOutcome(
+    const WorkspaceCheckpointOutcome& outcome) {
+    checkpointDiagnostics_ = outcome.diagnostics;
+    if (outcome.result == WorkspaceCheckpointResult::StateFailed) {
+        checkpointDiagnostics_.push_back({
+            skewer::core::DiagnosticSeverity::Error,
+            "Workspace checkpoint failed: " + outcome.errorString.toStdString(),
+            std::filesystem::path(workspace_.workspaceDirectory().toStdWString()) /
+                "workspace.json"
+        });
+    }
     renderDiagnostics();
-    if (result == WorkspaceCheckpointResult::PatchFailed) {
+    if (outcome.result == WorkspaceCheckpointResult::PatchFailed) {
         statusBar()->showMessage(QStringLiteral(
             "Field patch checkpoint failed; see diagnostics."), 10000);
-    } else if (result == WorkspaceCheckpointResult::StateFailed) {
+    } else if (outcome.result == WorkspaceCheckpointResult::StateFailed) {
         statusBar()->showMessage(QStringLiteral(
             "Workspace checkpoint failed: %1")
-            .arg(workspace_.errorString()), 10000);
+            .arg(outcome.errorString), 10000);
     }
 }
 
@@ -1235,12 +1310,17 @@ void MainWindow::updateDiagnosticsButton() {
 void MainWindow::renderDiagnostics() {
     diagnosticsWidget_->setDiagnostics({
         { DiagnosticCategory::FieldImport, QStringLiteral("Field Import"), fieldDiagnostics_ },
+        { DiagnosticCategory::EditInput, QStringLiteral("Edit Input"), editDiagnostics_ },
+        { DiagnosticCategory::EctValidation,
+            QStringLiteral("ECT Validation"), ectValidationDiagnostics_ },
         { DiagnosticCategory::AlxLoad, QStringLiteral("ALX Load"), alxLoadDiagnostics_ },
         { DiagnosticCategory::AlxFieldValidation,
             QStringLiteral("ALX Field Validation"), alxFieldDiagnostics_ },
         { DiagnosticCategory::Viewport, QStringLiteral("Viewport"), viewportDiagnostics_ },
         { DiagnosticCategory::WorkspacePatch,
             QStringLiteral("Workspace / Patch"), workspaceDiagnostics_ },
+        { DiagnosticCategory::Checkpoint,
+            QStringLiteral("Checkpoint"), checkpointDiagnostics_ },
         { DiagnosticCategory::Export, QStringLiteral("Export"), exportDiagnostics_ },
     });
     updateDiagnosticsButton();
@@ -1248,7 +1328,20 @@ void MainWindow::renderDiagnostics() {
 
 void MainWindow::closeEvent(QCloseEvent* event) {
     workspace_.stopCheckpoint();
-    saveCheckpoint();
+    if (!flushCheckpoint()) {
+        const auto closeAnyway = QMessageBox::question(
+            this,
+            QStringLiteral("Workspace checkpoint failed"),
+            QStringLiteral(
+                "The latest workspace changes could not be saved. "
+                "Close SKEWER without saving them?"),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No);
+        if (closeAnyway != QMessageBox::Yes) {
+            event->ignore();
+            return;
+        }
+    }
     QMainWindow::closeEvent(event);
 }
 

@@ -195,6 +195,13 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
 
 bool WorkspaceStateStore::save(const WorkspaceState& state) {
     if (!writable_) return false;
+    return saveFile(statePath(), state, error_);
+}
+
+bool WorkspaceStateStore::saveFile(
+    const QString& path,
+    const WorkspaceState& state,
+    QString& errorString) {
     QJsonObject camera{};
     camera.insert(QStringLiteral("x"), state.orbitCenter.x());
     camera.insert(QStringLiteral("y"), state.orbitCenter.y());
@@ -241,17 +248,17 @@ bool WorkspaceStateStore::save(const WorkspaceState& state) {
     root.insert(QStringLiteral("diagnostics_window_geometry"),
         QString::fromLatin1(state.diagnosticsWindowGeometry.toBase64()));
 
-    QSaveFile output(statePath());
+    QSaveFile output(path);
     if (!output.open(QIODevice::WriteOnly)) {
-        error_ = output.errorString();
+        errorString = output.errorString();
         return false;
     }
     const auto bytes = QJsonDocument(root).toJson(QJsonDocument::Indented);
     if (output.write(bytes) != bytes.size() || !output.commit()) {
-        error_ = output.errorString();
+        errorString = output.errorString();
         return false;
     }
-    error_.clear();
+    errorString.clear();
     return true;
 }
 

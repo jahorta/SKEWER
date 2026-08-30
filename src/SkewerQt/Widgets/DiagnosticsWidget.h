@@ -15,10 +15,13 @@ namespace skewer::qt {
 
 enum class DiagnosticCategory {
     FieldImport,
+    EditInput,
+    EctValidation,
     AlxLoad,
     AlxFieldValidation,
     Viewport,
     WorkspacePatch,
+    Checkpoint,
     Export,
 };
 
@@ -26,6 +29,8 @@ struct DiagnosticGroup {
     DiagnosticCategory category = DiagnosticCategory::FieldImport;
     QString title{};
     std::vector<skewer::core::Diagnostic> diagnostics{};
+
+    bool operator==(const DiagnosticGroup&) const = default;
 };
 
 struct DiagnosticSummary {
@@ -54,6 +59,7 @@ private:
     QCheckBox* infosCheck_ = nullptr;
     QListWidget* list_ = nullptr;
     DiagnosticSummary summary_{};
+    std::vector<DiagnosticGroup> lastGroups_{};
 };
 
 } // namespace skewer::qt

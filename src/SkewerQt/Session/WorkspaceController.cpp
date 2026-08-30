@@ -1,6 +1,7 @@
 #include "WorkspaceController.h"
 
 #include <QDateTime>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
 #include <array>
@@ -20,6 +21,9 @@ WorkspaceController::WorkspaceController(
     checkpointTimer_.setInterval(500);
     connect(&checkpointTimer_, &QTimer::timeout,
         this, &WorkspaceController::checkpointRequested);
+    checkpointFinishedConnection_ = connect(
+        &checkpointWatcher_, &QFutureWatcherBase::finished,
+        this, &WorkspaceController::onCheckpointFinished);
 }
 
 bool WorkspaceController::isWritable() const noexcept {
@@ -50,16 +54,94 @@ void WorkspaceController::stopCheckpoint() {
     checkpointTimer_.stop();
 }
 
-WorkspaceCheckpointResult WorkspaceController::checkpoint(
+void WorkspaceController::beginCheckpoint(
     const skewer::core::FieldDocument* document,
-    const WorkspaceState& state,
-    std::vector<skewer::core::Diagnostic>& diagnostics) {
-    if (!isWritable()) return WorkspaceCheckpointResult::Success;
-    if (!checkpointFieldPatch(document, diagnostics)) {
-        return WorkspaceCheckpointResult::PatchFailed;
+    const WorkspaceState& state) {
+    if (!isWritable()) return;
+    auto payload = makeCheckpointPayload(document, state);
+    if (checkpointWatcher_.isRunning()) {
+        pendingCheckpoint_ = std::move(payload);
+        return;
     }
-    if (!stateStore_.save(state)) return WorkspaceCheckpointResult::StateFailed;
-    return WorkspaceCheckpointResult::Success;
+    startCheckpoint(std::move(payload));
+}
+
+WorkspaceCheckpointOutcome WorkspaceController::flushCheckpoint(
+    const skewer::core::FieldDocument* document,
+    const WorkspaceState& state) {
+    stopCheckpoint();
+    disconnect(checkpointFinishedConnection_);
+    if (checkpointWatcher_.isRunning()) {
+        checkpointWatcher_.future().waitForFinished();
+        (void)checkpointWatcher_.future().takeResult();
+    }
+    pendingCheckpoint_.reset();
+    checkpointFinishedConnection_ = connect(
+        &checkpointWatcher_, &QFutureWatcherBase::finished,
+        this, &WorkspaceController::onCheckpointFinished);
+    return performCheckpoint(
+        std::filesystem::path(stateStore_.workspaceDirectory().toStdWString()),
+        stateStore_.statePath(),
+        makeCheckpointPayload(document, state));
+}
+
+WorkspaceController::WorkspaceCheckpointPayload
+WorkspaceController::makeCheckpointPayload(
+    const skewer::core::FieldDocument* document,
+    const WorkspaceState& state) {
+    WorkspaceCheckpointPayload payload{};
+    payload.revision = ++nextCheckpointRevision_;
+    payload.state = state;
+    if (document != nullptr) {
+        payload.hasDocument = true;
+        payload.patch = skewer::core::makeFieldPatch(
+            *document, preservedTriangleEdits_, preservedEctEdits_);
+    }
+    return payload;
+}
+
+void WorkspaceController::startCheckpoint(WorkspaceCheckpointPayload payload) {
+    const auto workspaceDirectory = std::filesystem::path(
+        stateStore_.workspaceDirectory().toStdWString());
+    const auto statePath = stateStore_.statePath();
+    checkpointWatcher_.setFuture(QtConcurrent::run(
+        [workspaceDirectory, statePath, payload = std::move(payload)]() {
+            return performCheckpoint(workspaceDirectory, statePath, payload);
+        }));
+}
+
+void WorkspaceController::onCheckpointFinished() {
+    const auto outcome = checkpointWatcher_.future().takeResult();
+    if (pendingCheckpoint_.has_value()) {
+        auto pending = std::move(*pendingCheckpoint_);
+        pendingCheckpoint_.reset();
+        startCheckpoint(std::move(pending));
+        return;
+    }
+    emit checkpointFinished(outcome);
+}
+
+WorkspaceCheckpointOutcome WorkspaceController::performCheckpoint(
+    const std::filesystem::path& workspaceDirectory,
+    const QString& statePath,
+    const WorkspaceCheckpointPayload& payload) {
+    WorkspaceCheckpointOutcome outcome{};
+    outcome.revision = payload.revision;
+    if (payload.hasDocument) {
+        skewer::core::FieldPatchStore patchStore(workspaceDirectory);
+        const bool patchSaved = payload.patch.empty()
+            ? patchStore.remove(payload.patch.stem, outcome.diagnostics)
+            : patchStore.save(payload.patch, outcome.diagnostics);
+        if (!patchSaved) {
+            outcome.result = WorkspaceCheckpointResult::PatchFailed;
+            return outcome;
+        }
+    }
+    if (!WorkspaceStateStore::saveFile(
+        statePath, payload.state, outcome.errorString)) {
+        outcome.result = WorkspaceCheckpointResult::StateFailed;
+    }
+    return outcome;
 }
 
 std::vector<skewer::core::Diagnostic> WorkspaceController::restoreFieldPatch(
@@ -114,6 +196,7 @@ WorkspaceRebaseResult WorkspaceController::rebaseConflicts(
             const auto result = document.setTriangleSelectors(
                 keys, conflict.triangle->selector, "Rebase selector patch");
             output.changed = output.changed || result.changed;
+            output.changes.merge(result.changes);
             output.diagnostics.insert(output.diagnostics.end(),
                 result.diagnostics.begin(), result.diagnostics.end());
             const auto& key = conflict.triangle->key;
@@ -129,6 +212,7 @@ WorkspaceRebaseResult WorkspaceController::rebaseConflicts(
                 conflict.ect->value,
                 "Rebase ECT patch");
             output.changed = output.changed || result.changed;
+            output.changes.merge(result.changes);
             output.diagnostics.insert(output.diagnostics.end(),
                 result.diagnostics.begin(), result.diagnostics.end());
             preservedEctEdits_.erase(std::remove_if(
@@ -211,17 +295,6 @@ bool WorkspaceController::archiveOrDiscardPatches(
     }
     clearActiveFieldState();
     return true;
-}
-
-bool WorkspaceController::checkpointFieldPatch(
-    const skewer::core::FieldDocument* document,
-    std::vector<skewer::core::Diagnostic>& diagnostics) {
-    if (document == nullptr || !isWritable()) return true;
-    const auto patch = skewer::core::makeFieldPatch(
-        *document, preservedTriangleEdits_, preservedEctEdits_);
-    return patch.empty()
-        ? patchStore_.remove(document->assets.stem, diagnostics)
-        : patchStore_.save(patch, diagnostics);
 }
 
 } // namespace skewer::qt

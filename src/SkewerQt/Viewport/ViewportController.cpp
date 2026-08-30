@@ -34,6 +34,12 @@ void ViewportController::refreshScene() {
     syncSelection();
 }
 
+void ViewportController::updateTriangleSelectors(
+    const std::span<const skewer::core::TriangleKey> keys) {
+    if (sceneAdapter_.updateTriangleSelectors(keys)) return;
+    refreshScene();
+}
+
 void ViewportController::setVisibility(std::vector<std::uint8_t> visibility) {
     sceneAdapter_.setVisibility(std::move(visibility));
     syncScene();

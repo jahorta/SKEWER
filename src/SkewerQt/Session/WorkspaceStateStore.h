@@ -46,6 +46,10 @@ public:
     [[nodiscard]] QString errorString() const;
     [[nodiscard]] std::optional<WorkspaceState> load();
     [[nodiscard]] bool save(const WorkspaceState& state);
+    [[nodiscard]] static bool saveFile(
+        const QString& path,
+        const WorkspaceState& state,
+        QString& errorString);
 
 private:
     void probe();

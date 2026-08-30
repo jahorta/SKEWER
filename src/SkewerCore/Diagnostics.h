@@ -16,6 +16,8 @@ struct Diagnostic {
     DiagnosticSeverity severity = DiagnosticSeverity::Info;
     std::string message{};
     std::filesystem::path path{};
+
+    bool operator==(const Diagnostic&) const = default;
 };
 
 [[nodiscard]] inline bool hasErrors(const std::vector<Diagnostic>& diagnostics) {

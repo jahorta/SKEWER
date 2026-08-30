@@ -65,6 +65,8 @@ DiagnosticsWidget::DiagnosticsWidget(QWidget* parent)
 }
 
 void DiagnosticsWidget::setDiagnostics(const std::vector<DiagnosticGroup>& groups) {
+    if (groups == lastGroups_) return;
+    lastGroups_ = groups;
     list_->clear();
     summary_ = {};
     std::size_t rows = 0U;
