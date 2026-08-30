@@ -34,7 +34,6 @@ public:
 
     void setBackend(QObject* backend);
     void setSceneMeshes(QVariantList meshes);
-    void setSelectionMeshes(QVariantList meshes);
     void setContextOpacity(int percent);
     void setVisualSettings(const VisualSettings& settings);
     void setCameraState(const ViewportCameraState& state);
@@ -60,7 +59,6 @@ private:
     QToolButton* visualSettingsButton_ = nullptr;
     QPointer<QObject> backend_{};
     QVariantList sceneMeshes_{};
-    QVariantList selectionMeshes_{};
     ViewportCameraState cameraState_{};
     int contextOpacityPercent_ = 40;
     VisualSettings visualSettings_{};

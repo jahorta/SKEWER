@@ -94,6 +94,59 @@ TEST(SceneModel, DecodesEncounterSelectorDigit) {
     EXPECT_EQ(skewer::core::decodeEncounterSelector(90), 9);
 }
 
+TEST(SceneModel, InterpretsTraversalBarrierOnlyForCollisionGroundRoles) {
+    using skewer::core::SceneReferenceRole;
+    using skewer::core::TraversalClassification;
+    for (const auto role : {
+        SceneReferenceRole::EventGround,
+        SceneReferenceRole::OtherGround }) {
+        const auto onesOne = skewer::core::interpretTriangleMetadata(1U, role);
+        EXPECT_EQ(onesOne.decodedWord, 0x6800U);
+        EXPECT_EQ(onesOne.traversal,
+            TraversalClassification::BarrierMaskPresent);
+
+        const auto onesTwo = skewer::core::interpretTriangleMetadata(2U, role);
+        EXPECT_EQ(onesTwo.decodedWord, 0x7800U);
+        EXPECT_EQ(onesTwo.traversal,
+            TraversalClassification::BarrierMaskPresent);
+
+        const auto conditional = skewer::core::interpretTriangleMetadata(3U, role);
+        EXPECT_EQ(conditional.decodedWord, 0x1800U);
+        EXPECT_EQ(conditional.traversal,
+            TraversalClassification::NoKnownBarrierMask);
+    }
+
+    EXPECT_EQ(skewer::core::interpretTriangleMetadata(
+        1U, SceneReferenceRole::OrdinaryObject).traversal,
+        TraversalClassification::NotApplicable);
+    EXPECT_EQ(skewer::core::interpretTriangleMetadata(
+        2U, SceneReferenceRole::Unreferenced).traversal,
+        TraversalClassification::NotApplicable);
+}
+
+TEST(SceneModel, PreservesWindingAndBarrierInterpretationAcrossSelectorDigits) {
+    using skewer::core::SceneReferenceRole;
+    using skewer::core::TraversalClassification;
+    const auto windingOnly = skewer::core::interpretTriangleMetadata(
+        0x8000U, SceneReferenceRole::OtherGround);
+    EXPECT_TRUE(windingOnly.streamWindingHighBit);
+    EXPECT_EQ(windingOnly.selectorLow15, 0U);
+    EXPECT_EQ(windingOnly.traversal,
+        TraversalClassification::NoKnownBarrierMask);
+
+    const auto selectorTwo = skewer::core::interpretTriangleMetadata(
+        0x8000U + 21U, SceneReferenceRole::OtherGround);
+    const auto selectorSeven = skewer::core::interpretTriangleMetadata(
+        0x8000U + 71U, SceneReferenceRole::OtherGround);
+    EXPECT_EQ(selectorTwo.tensDigit, 2U);
+    EXPECT_EQ(selectorSeven.tensDigit, 7U);
+    EXPECT_EQ(selectorTwo.onesDigit, selectorSeven.onesDigit);
+    EXPECT_EQ(selectorTwo.traversal,
+        TraversalClassification::BarrierMaskPresent);
+    EXPECT_EQ(selectorSeven.traversal,
+        TraversalClassification::BarrierMaskPresent);
+}
+
 TEST(SceneModel, ProducesDistinctGrndAndGobjKeysWithTransforms) {
     spice::mld::model::MldFile file{};
     constexpr std::uint32_t grndAddress = 0x1000U;

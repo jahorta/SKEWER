@@ -7,7 +7,6 @@ Item {
 
     property var backend: null
     property var sceneMeshes: []
-    property var selectionMeshes: []
     property var selectorColors: []
     property vector3d orbitCenter: Qt.vector3d(0, 0, 0)
     property real orbitDistance: 500
@@ -21,8 +20,8 @@ Item {
     property real contextSaturation: 1.0
     property real contextContrast: 1.0
     property bool encounterEdgesEnabled: false
+    property bool traversalBarriersEnabled: false
     readonly property real encounterDepthOffset: 0.0000002
-    readonly property real selectionDepthOffset: 0.0000004
     readonly property real encounterEdgeWidth: 1.25
     readonly property color encounterEdgeColor: "#20242B"
     readonly property real minOrbitDistance: 20
@@ -125,6 +124,7 @@ Item {
                     property real materialSaturation: root.contextSaturation
                     property real materialContrast: root.contextContrast
                     property bool edgesEnabled: false
+                    property bool barrierPatternEnabled: false
                     property real edgeWidth: root.encounterEdgeWidth
                     property color edgeColor: root.encounterEdgeColor
                     shadingMode: CustomMaterial.Unshaded
@@ -143,6 +143,9 @@ Item {
                     property real materialSaturation: root.encounterSaturation
                     property real materialContrast: root.encounterContrast
                     property bool edgesEnabled: root.encounterEdgesEnabled
+                    property bool barrierPatternEnabled:
+                        root.traversalBarriersEnabled
+                        && sceneModelDelegate.mesh.traversalBarrier === true
                     property real edgeWidth: root.encounterEdgeWidth
                     property color edgeColor: root.encounterEdgeColor
                     shadingMode: CustomMaterial.Unshaded
@@ -154,29 +157,6 @@ Item {
             }
         }
 
-        Repeater3D {
-            model: root.selectionMeshes.length
-            delegate: Model {
-                required property int index
-                property var mesh: index >= 0 && index < root.selectionMeshes.length
-                    ? root.selectionMeshes[index] : ({})
-                geometry: mesh.geometry
-                materials: CustomMaterial {
-                    property real depthOffset: root.selectionDepthOffset
-                    property real materialOpacity: 1.0
-                    property real materialBrightness: 1.0
-                    property real materialSaturation: 1.0
-                    property real materialContrast: 1.0
-                    property bool edgesEnabled: false
-                    property real edgeWidth: root.encounterEdgeWidth
-                    property color edgeColor: root.encounterEdgeColor
-                    shadingMode: CustomMaterial.Unshaded
-                    vertexShader: "EncounterDepth.vert"
-                    fragmentShader: "VertexColor.frag"
-                    cullMode: Material.NoCulling
-                }
-            }
-        }
     }
 
     Rectangle {
@@ -200,36 +180,79 @@ Item {
         anchors.left: helpPanel.left
         anchors.bottom: helpPanel.top
         anchors.bottomMargin: 6
-        width: selectorLegendRow.implicitWidth + 16
-        height: selectorLegendRow.implicitHeight + 12
+        width: selectorLegendColumn.implicitWidth + 16
+        height: selectorLegendColumn.implicitHeight + 12
         radius: 4
         color: "#B020242B"
 
-        Row {
-            id: selectorLegendRow
+        Column {
+            id: selectorLegendColumn
             anchors.centerIn: parent
-            spacing: 10
+            spacing: 5
 
-            Repeater {
-                model: root.selectorColors.length
-                delegate: Row {
-                    required property int index
-                    spacing: 3
+            Row {
+                id: selectorLegendRow
+                spacing: 10
 
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: (parent.index + 1) + ":"
-                        color: "#E8EDF2"
+                Repeater {
+                    model: root.selectorColors.length
+                    delegate: Row {
+                        required property int index
+                        spacing: 3
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: (parent.index + 1) + ":"
+                            color: "#E8EDF2"
+                        }
+
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 14
+                            height: 14
+                            color: root.adjustedSelectorColor(root.selectorColors[parent.index])
+                            border.width: 1
+                            border.color: "#B0FFFFFF"
+                        }
                     }
+                }
+            }
+
+            Row {
+                visible: root.traversalBarriersEnabled
+                spacing: 6
+
+                Item {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 28
+                    height: 14
+                    clip: true
 
                     Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 14
-                        height: 14
-                        color: root.adjustedSelectorColor(root.selectorColors[parent.index])
+                        anchors.fill: parent
+                        color: "#667482"
                         border.width: 1
                         border.color: "#B0FFFFFF"
                     }
+
+                    Repeater {
+                        model: 5
+                        delegate: Rectangle {
+                            required property int index
+                            x: index * 8 - 10
+                            y: 6
+                            width: 20
+                            height: 2
+                            rotation: -45
+                            color: "#A65353"
+                        }
+                    }
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Traversal barrier"
+                    color: "#E8EDF2"
                 }
             }
         }
@@ -280,6 +303,15 @@ Item {
                     mouse.modifiers)
             }
             dragging = false
+        }
+        onDoubleClicked: function(mouse) {
+            if (mouse.button === Qt.LeftButton && !dragging) {
+                const nearPoint = sceneView.mapTo3DScene(Qt.vector3d(mouse.x, mouse.y, 0.01))
+                const farPoint = sceneView.mapTo3DScene(Qt.vector3d(mouse.x, mouse.y, 1.0))
+                root.backend.handleSceneDoubleClick(
+                    nearPoint.x, nearPoint.y, nearPoint.z,
+                    farPoint.x, farPoint.y, farPoint.z)
+            }
         }
         onCanceled: dragging = false
         onWheel: function(wheel) {

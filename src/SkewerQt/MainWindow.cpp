@@ -27,6 +27,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolButton>
@@ -87,7 +88,7 @@ MainWindow::MainWindow(QWidget* parent)
         visualSettingsDialog_->setSettings(settings);
         visualSettingsDialog_->setContextOpacityPercent(
             startupState.contextOpacityPercent);
-        viewportController_->setVisualSettings(settings);
+        applyVisualSettings(settings, false);
         viewportController_->setContextOpacity(
             visualSettingsDialog_->contextOpacityPercent());
     }
@@ -247,7 +248,7 @@ void MainWindow::buildUi() {
     connect(reviewChangesAction_, &QAction::triggered,
         this, &MainWindow::showCurrentFieldChanges);
 
-    auto* dataMenu = menuBar()->addMenu(QStringLiteral("Data"));
+    auto* dataMenu = menuBar()->addMenu(QStringLiteral("ALX"));
     selectAlxAction_ = dataMenu->addAction(
         QStringLiteral("Select ALX Data Directory..."));
     refreshAlxAction_ = dataMenu->addAction(
@@ -283,6 +284,29 @@ void MainWindow::buildUi() {
     connect(diagnosticsWindow_, &QDialog::finished,
         this, [this]() { diagnosticsAction_->setChecked(false); });
     viewMenu->addSeparator();
+    encounterEdgesAction_ = viewMenu->addAction(
+        QStringLiteral("Show triangle edges"));
+    encounterEdgesAction_->setCheckable(true);
+    encounterEdgesAction_->setChecked(
+        visualSettingsDialog_->settings().encounterEdgesEnabled);
+    connect(encounterEdgesAction_, &QAction::toggled,
+        this, [this](const bool enabled) {
+            auto settings = visualSettingsDialog_->settings();
+            settings.encounterEdgesEnabled = enabled;
+            applyVisualSettings(settings, true);
+        });
+    traversalBarriersAction_ = viewMenu->addAction(
+        QStringLiteral("Highlight traversal barriers"));
+    traversalBarriersAction_->setCheckable(true);
+    traversalBarriersAction_->setChecked(
+        visualSettingsDialog_->settings().traversalBarriersEnabled);
+    connect(traversalBarriersAction_, &QAction::toggled,
+        this, [this](const bool enabled) {
+            auto settings = visualSettingsDialog_->settings();
+            settings.traversalBarriersEnabled = enabled;
+            applyVisualSettings(settings, true);
+        });
+    viewMenu->addSeparator();
     auto* frameAction = viewMenu->addAction(QStringLiteral("Frame All"));
     connect(frameAction, &QAction::triggered, this, &MainWindow::frameAll);
     auto* visualSettingsAction = viewMenu->addAction(
@@ -292,7 +316,7 @@ void MainWindow::buildUi() {
 
     connect(visualSettingsDialog_, &VisualSettingsDialog::settingsChanged,
         this, [this]() {
-            viewportController_->setVisualSettings(visualSettingsDialog_->settings());
+            applyVisualSettings(visualSettingsDialog_->settings(), false);
             viewportController_->setContextOpacity(
                 visualSettingsDialog_->contextOpacityPercent());
             scheduleCheckpoint();
@@ -415,6 +439,11 @@ void MainWindow::connectControllers() {
         this, [this]() {
             updateInspector();
             scheduleCheckpoint();
+        });
+    connect(viewportController_, &ViewportController::sceneBatchDoubleClicked,
+        this, [this](const qulonglong batchIndex) {
+            fieldScene_->revealSceneBatch(
+                static_cast<std::size_t>(batchIndex));
         });
     connect(viewportController_, &ViewportController::cameraStateChanged,
         this, &MainWindow::scheduleCheckpoint);
@@ -982,6 +1011,23 @@ void MainWindow::showVisualSettingsDialog() {
     visualSettingsDialog_->show();
     visualSettingsDialog_->raise();
     visualSettingsDialog_->activateWindow();
+}
+
+void MainWindow::applyVisualSettings(
+    const VisualSettings& settings,
+    const bool checkpoint) {
+    const auto clamped = clampedVisualSettings(settings);
+    visualSettingsDialog_->setSettings(clamped);
+    viewportController_->setVisualSettings(clamped);
+    if (encounterEdgesAction_ != nullptr) {
+        const QSignalBlocker blocker(encounterEdgesAction_);
+        encounterEdgesAction_->setChecked(clamped.encounterEdgesEnabled);
+    }
+    if (traversalBarriersAction_ != nullptr) {
+        const QSignalBlocker blocker(traversalBarriersAction_);
+        traversalBarriersAction_->setChecked(clamped.traversalBarriersEnabled);
+    }
+    if (checkpoint) scheduleCheckpoint();
 }
 
 void MainWindow::showCurrentFieldChanges() {

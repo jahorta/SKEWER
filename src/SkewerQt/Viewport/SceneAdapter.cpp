@@ -65,7 +65,8 @@ constexpr std::array<std::array<float, 2>, 3> kTriangleCoordinates = {
 
 void appendTriangle(std::vector<RenderVertex>& vertices,
     const skewer::core::SceneTriangle& triangle,
-    const Color color) {
+    const Color color,
+    const bool selected) {
     const auto normal = faceNormal(triangle);
     for (std::size_t corner = 0; corner < triangle.positions.size(); ++corner) {
         const auto& point = triangle.positions[corner];
@@ -74,6 +75,7 @@ void appendTriangle(std::vector<RenderVertex>& vertices,
             normal.x, normal.y, normal.z,
             color.r, color.g, color.b, color.a,
             kTriangleCoordinates[corner][0], kTriangleCoordinates[corner][1],
+            selected ? 1.0F : 0.0F, 0.0F,
         });
     }
 }
@@ -99,6 +101,7 @@ void appendContextVertex(std::vector<RenderVertex>& vertices,
             vertex.normal.x, vertex.normal.y, vertex.normal.z,
             color.r, color.g, color.b, color.a,
             kTriangleCoordinates[corner][0], kTriangleCoordinates[corner][1],
+            0.0F, 0.0F,
         });
 }
 
@@ -109,12 +112,10 @@ void SceneAdapter::setScene(const skewer::core::SceneModel* scene) {
     selection_.clear();
     visibility_.assign(scene_ == nullptr ? 0U : scene_->batches.size() + scene_->contextBatches.size(), 1U);
     rebuildScene();
-    rebuildSelection();
 }
 
 void SceneAdapter::refreshScene() {
     rebuildScene();
-    rebuildSelection();
 }
 
 void SceneAdapter::setVisibility(std::vector<std::uint8_t> visibleBatches) {
@@ -124,7 +125,22 @@ void SceneAdapter::setVisibility(std::vector<std::uint8_t> visibleBatches) {
 void SceneAdapter::setSelection(
     const std::set<skewer::core::TriangleKey, skewer::core::TriangleKeyLess>& selection) {
     selection_ = selection;
-    rebuildSelection();
+    for (auto& entry : sceneGeometry_) {
+        if (entry.context) continue;
+        bool changed = false;
+        for (std::size_t triangleIndex = 0;
+            triangleIndex < entry.triangleKeys.size(); ++triangleIndex) {
+            const float selected = selection_.contains(entry.triangleKeys[triangleIndex])
+                ? 1.0F : 0.0F;
+            const auto firstVertex = triangleIndex * 3U;
+            if (entry.vertices[firstVertex].selected == selected) continue;
+            changed = true;
+            for (std::size_t corner = 0; corner < 3U; ++corner) {
+                entry.vertices[firstVertex + corner].selected = selected;
+            }
+        }
+        if (changed) entry.geometry->setTriangles(entry.vertices);
+    }
 }
 
 QVariantList SceneAdapter::sceneMeshes() const {
@@ -135,17 +151,8 @@ QVariantList SceneAdapter::sceneMeshes() const {
         mesh.insert(QStringLiteral("visible"),
             entry.visibilityIndex < visibility_.size() ? visibility_[entry.visibilityIndex] != 0U : true);
         mesh.insert(QStringLiteral("context"), entry.context);
+        mesh.insert(QStringLiteral("traversalBarrier"), entry.traversalBarrier);
         mesh.insert(QStringLiteral("doubleSided"), entry.doubleSided);
-        result.push_back(mesh);
-    }
-    return result;
-}
-
-QVariantList SceneAdapter::selectionMeshes() const {
-    QVariantList result{};
-    if (selectionGeometry_ != nullptr && !selection_.empty()) {
-        QVariantMap mesh{};
-        mesh.insert(QStringLiteral("geometry"), QVariant::fromValue<QObject*>(selectionGeometry_.get()));
         result.push_back(mesh);
     }
     return result;
@@ -171,18 +178,36 @@ void SceneAdapter::rebuildScene() {
     sceneGeometry_.reserve(scene_->batches.size() + scene_->contextBatches.size() * 2U);
     for (std::size_t batchIndex = 0; batchIndex < scene_->batches.size(); ++batchIndex) {
         const auto& batch = scene_->batches[batchIndex];
-        std::vector<RenderVertex> vertices{};
-        vertices.reserve(batch.triangleIndices.size() * 3U);
+        std::array<std::vector<RenderVertex>, 2> verticesByTraversal{};
+        std::array<std::vector<skewer::core::TriangleKey>, 2> keysByTraversal{};
         for (const auto triangleIndex : batch.triangleIndices) {
             const auto& triangle = scene_->triangles[triangleIndex];
+            const auto metadata = skewer::core::interpretTriangleMetadata(
+                triangle.rawMetadata[2], batch.instance.referenceRole);
+            const bool traversalBarrier = metadata.traversal ==
+                skewer::core::TraversalClassification::BarrierMaskPresent;
+            const auto traversalIndex = traversalBarrier ? 1U : 0U;
+            auto& vertices = verticesByTraversal[traversalIndex];
+            vertices.reserve(vertices.size() + 3U);
+            keysByTraversal[traversalIndex].push_back(triangle.key);
             const auto paletteIndex = triangle.selector <= 8U ? triangle.selector : 9U;
             appendTriangle(vertices, triangle,
-                renderColor(kSelectorPalette[paletteIndex]));
+                renderColor(kSelectorPalette[paletteIndex]),
+                selection_.contains(triangle.key));
         }
-        auto geometry = std::make_unique<SelectorGeometry>();
-        geometry->setTriangles(vertices);
-        QQmlEngine::setObjectOwnership(geometry.get(), QQmlEngine::CppOwnership);
-        sceneGeometry_.push_back({ std::move(geometry), batchIndex, false, true });
+        for (std::size_t traversal = 0;
+            traversal < verticesByTraversal.size(); ++traversal) {
+            if (verticesByTraversal[traversal].empty()) continue;
+            SceneGeometryEntry entry{};
+            entry.geometry = std::make_unique<SelectorGeometry>();
+            entry.vertices = std::move(verticesByTraversal[traversal]);
+            entry.triangleKeys = std::move(keysByTraversal[traversal]);
+            entry.visibilityIndex = batchIndex;
+            entry.traversalBarrier = traversal != 0U;
+            entry.geometry->setTriangles(entry.vertices);
+            QQmlEngine::setObjectOwnership(entry.geometry.get(), QQmlEngine::CppOwnership);
+            sceneGeometry_.push_back(std::move(entry));
+        }
     }
     for (std::size_t batchIndex = 0; batchIndex < scene_->contextBatches.size(); ++batchIndex) {
         const auto& batch = scene_->contextBatches[batchIndex];
@@ -200,26 +225,17 @@ void SceneAdapter::rebuildScene() {
         }
         for (std::size_t sidedness = 0; sidedness < verticesBySidedness.size(); ++sidedness) {
             if (verticesBySidedness[sidedness].empty()) continue;
-            auto geometry = std::make_unique<SelectorGeometry>();
-            geometry->setTriangles(verticesBySidedness[sidedness]);
-            QQmlEngine::setObjectOwnership(geometry.get(), QQmlEngine::CppOwnership);
-            sceneGeometry_.push_back({ std::move(geometry), scene_->batches.size() + batchIndex,
-                true, sidedness != 0U });
+            SceneGeometryEntry entry{};
+            entry.geometry = std::make_unique<SelectorGeometry>();
+            entry.vertices = std::move(verticesBySidedness[sidedness]);
+            entry.visibilityIndex = scene_->batches.size() + batchIndex;
+            entry.context = true;
+            entry.doubleSided = sidedness != 0U;
+            entry.geometry->setTriangles(entry.vertices);
+            QQmlEngine::setObjectOwnership(entry.geometry.get(), QQmlEngine::CppOwnership);
+            sceneGeometry_.push_back(std::move(entry));
         }
     }
-}
-
-void SceneAdapter::rebuildSelection() {
-    selectionGeometry_.reset();
-    if (scene_ == nullptr || selection_.empty()) return;
-    std::vector<RenderVertex> vertices{};
-    for (const auto& triangle : scene_->triangles) {
-        if (selection_.find(triangle.key) == selection_.end()) continue;
-        appendTriangle(vertices, triangle, Color{ 1.0F, 0.95F, 0.12F, 1.0F });
-    }
-    selectionGeometry_ = std::make_unique<SelectorGeometry>();
-    selectionGeometry_->setTriangles(vertices);
-    QQmlEngine::setObjectOwnership(selectionGeometry_.get(), QQmlEngine::CppOwnership);
 }
 
 } // namespace skewer::qt

@@ -40,6 +40,7 @@ public:
         const skewer::core::SceneModel* scene,
         const std::vector<skewer::core::EventGroundPreset>& presets = {});
     void clearScene();
+    void revealSceneBatch(std::size_t batchIndex);
     void showGroundTblId(std::int32_t tblId);
     void clearGroundMetadata();
 

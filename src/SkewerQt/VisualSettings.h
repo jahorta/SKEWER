@@ -19,6 +19,7 @@ struct VisualSettings {
     LayerVisualSettings encounter{};
     LayerVisualSettings fieldContext{};
     bool encounterEdgesEnabled = false;
+    bool traversalBarriersEnabled = false;
 };
 
 [[nodiscard]] inline LayerVisualSettings clampedLayerVisualSettings(

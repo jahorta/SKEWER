@@ -44,6 +44,7 @@ VisualSettingsDialog::VisualSettingsDialog(QWidget* parent)
         setLayerSettings(contextControls_, {});
         contextControls_.opacity->setValue(kDefaultContextOpacityPercent);
         encounterEdges_->setChecked(false);
+        traversalBarriers_->setChecked(false);
         updating_ = false;
         emit settingsChanged();
     });
@@ -109,6 +110,15 @@ QWidget* VisualSettingsDialog::createLayerGroup(
         grid->addWidget(encounterEdges_, nextRow++, 0, 1, 3);
         connect(encounterEdges_, &QCheckBox::toggled,
             this, &VisualSettingsDialog::notifyChanged);
+
+        traversalBarriers_ = new QCheckBox(
+            QStringLiteral("Highlight traversal barriers"), this);
+        traversalBarriers_->setToolTip(QStringLiteral(
+            "Hatch collision-ground triangles carrying the decoded "
+            "0x4800 traversal-barrier mask."));
+        grid->addWidget(traversalBarriers_, nextRow++, 0, 1, 3);
+        connect(traversalBarriers_, &QCheckBox::toggled,
+            this, &VisualSettingsDialog::notifyChanged);
     }
 
     controls.reset = new QPushButton(QStringLiteral("Reset"), this);
@@ -131,6 +141,7 @@ void VisualSettingsDialog::setSettings(const VisualSettings& settings) {
     setLayerSettings(encounterControls_, clamped.encounter);
     setLayerSettings(contextControls_, clamped.fieldContext);
     encounterEdges_->setChecked(clamped.encounterEdgesEnabled);
+    traversalBarriers_->setChecked(clamped.traversalBarriersEnabled);
     updating_ = false;
 }
 
@@ -138,7 +149,8 @@ VisualSettings VisualSettingsDialog::settings() const {
     return clampedVisualSettings({
         layerSettings(encounterControls_),
         layerSettings(contextControls_),
-        encounterEdges_->isChecked()
+        encounterEdges_->isChecked(),
+        traversalBarriers_->isChecked()
     });
 }
 
@@ -189,6 +201,10 @@ void VisualSettingsDialog::resetLayer(LayerControls& controls) {
     setLayerSettings(controls, {});
     if (controls.opacity != nullptr) {
         controls.opacity->setValue(kDefaultContextOpacityPercent);
+    }
+    if (&controls == &encounterControls_) {
+        encounterEdges_->setChecked(false);
+        traversalBarriers_->setChecked(false);
     }
     updating_ = false;
     emit settingsChanged();

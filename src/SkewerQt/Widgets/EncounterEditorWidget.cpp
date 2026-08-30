@@ -158,13 +158,16 @@ void EncounterEditorWidget::showTable(
         const auto& encounter = table.encounters[static_cast<std::size_t>(row)];
         auto* encounterId = new QTableWidgetItem(QString::number(encounter.encounterId));
         auto* weight = new QTableWidgetItem(QString::number(encounter.encounterRate));
-        auto* formation = new QTableWidgetItem();
+        auto* formation = new QTableWidgetItem(QStringLiteral("---"));
         formation->setFlags(formation->flags() & ~Qt::ItemIsEditable);
+        formation->setToolTip(QStringLiteral(
+            "Load ALX data to show enemy formations."));
         if (static_cast<std::size_t>(row) < formations.size() &&
             formations[static_cast<std::size_t>(row)].has_value()) {
             const auto& resolution = *formations[static_cast<std::size_t>(row)];
             if (resolution.status == skewer::core::FormationResolutionStatus::Unique) {
                 formation->setText(formationSummary(resolution));
+                formation->setToolTip(QString{});
             } else {
                 formation->setText(QStringLiteral("—"));
                 formation->setToolTip(unavailableFormationTooltip(resolution.status));

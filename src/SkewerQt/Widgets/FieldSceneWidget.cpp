@@ -418,6 +418,31 @@ void FieldSceneWidget::setScene(
 
 void FieldSceneWidget::clearScene() { setScene(nullptr); }
 
+void FieldSceneWidget::revealSceneBatch(const std::size_t batchIndex) {
+    QTreeWidgetItem* matchingItem = nullptr;
+    for (int row = 0;
+        row < resourceTree_->topLevelItemCount() && matchingItem == nullptr;
+        ++row) {
+        forEachVisibilityLeaf(resourceTree_->topLevelItem(row),
+            [&](QTreeWidgetItem* item) {
+                if (matchingItem != nullptr) return;
+                const auto indices = visibilityIndices(item);
+                if (std::find(indices.begin(), indices.end(), batchIndex) !=
+                    indices.end()) {
+                    matchingItem = item;
+                }
+            });
+    }
+    if (matchingItem == nullptr) return;
+
+    for (auto* parent = matchingItem->parent(); parent != nullptr;
+        parent = parent->parent()) {
+        parent->setExpanded(true);
+    }
+    resourceTree_->setCurrentItem(matchingItem);
+    resourceTree_->scrollToItem(matchingItem);
+}
+
 void FieldSceneWidget::showGroundTblId(const std::int32_t tblId) {
     const auto hexadecimal = QString::number(
         static_cast<std::uint32_t>(tblId), 16)

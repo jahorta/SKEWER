@@ -39,14 +39,20 @@ public:
 
     Q_INVOKABLE void handleSceneClick(float nearX, float nearY, float nearZ,
         float farX, float farY, float farZ, int modifiers);
+    Q_INVOKABLE void handleSceneDoubleClick(float nearX, float nearY, float nearZ,
+        float farX, float farY, float farZ);
     Q_INVOKABLE void cameraChanged();
 
 signals:
     void selectionChanged();
+    void sceneBatchDoubleClicked(qulonglong batchIndex);
     void cameraStateChanged();
     void loadDiagnosticsChanged();
 
 private:
+    [[nodiscard]] std::optional<skewer::core::TriangleHit> pickScene(
+        float nearX, float nearY, float nearZ,
+        float farX, float farY, float farZ) const;
     [[nodiscard]] bool containsTriangle(const skewer::core::TriangleKey& key) const;
     void syncScene();
     void syncSelection();

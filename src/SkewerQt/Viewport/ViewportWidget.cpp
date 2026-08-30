@@ -83,13 +83,6 @@ void ViewportWidget::setSceneMeshes(QVariantList meshes) {
     }
 }
 
-void ViewportWidget::setSelectionMeshes(QVariantList meshes) {
-    selectionMeshes_ = std::move(meshes);
-    if (quickView_->rootObject() != nullptr) {
-        quickView_->rootObject()->setProperty("selectionMeshes", selectionMeshes_);
-    }
-}
-
 void ViewportWidget::setContextOpacity(const int percent) {
     contextOpacityPercent_ = std::clamp(percent, 0, 100);
     if (quickView_->rootObject() != nullptr) {
@@ -115,6 +108,8 @@ void ViewportWidget::setVisualSettings(const VisualSettings& settings) {
     root->setProperty("contextContrast",
         static_cast<double>(visualSettings_.fieldContext.contrastPercent) / 100.0);
     root->setProperty("encounterEdgesEnabled", visualSettings_.encounterEdgesEnabled);
+    root->setProperty("traversalBarriersEnabled",
+        visualSettings_.traversalBarriersEnabled);
 }
 
 void ViewportWidget::setCameraState(const ViewportCameraState& state) {
@@ -181,7 +176,6 @@ void ViewportWidget::applyPendingState() {
     }
     setBackend(backend_.data());
     setSceneMeshes(sceneMeshes_);
-    setSelectionMeshes(selectionMeshes_);
     setContextOpacity(contextOpacityPercent_);
     setVisualSettings(visualSettings_);
     setCameraState(cameraState_);

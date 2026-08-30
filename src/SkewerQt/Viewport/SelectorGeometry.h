@@ -20,6 +20,8 @@ struct RenderVertex {
     float a = 1.0F;
     float u = 0.0F;
     float v = 0.0F;
+    float selected = 0.0F;
+    float selectionPadding = 0.0F;
 };
 
 class SelectorGeometry final : public QQuick3DGeometry {

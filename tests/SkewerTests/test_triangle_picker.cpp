@@ -24,6 +24,7 @@ TEST(TrianglePicker, PicksNearestTriangleAndPreservesKeyStyle) {
     const auto hit = picker.pick({ { 0, 0, 0 }, { 0, 0, 1 } });
     ASSERT_TRUE(hit.has_value());
     EXPECT_FLOAT_EQ(hit->distance, 2.0F);
+    EXPECT_EQ(hit->batchIndex, 1U);
     ASSERT_TRUE(std::holds_alternative<skewer::core::GobjTriangleKey>(hit->key));
     EXPECT_EQ(std::get<skewer::core::GobjTriangleKey>(hit->key).nodeIndex, 4U);
 }

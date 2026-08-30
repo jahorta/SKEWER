@@ -80,6 +80,7 @@ private:
     void updateFormationDock();
     void refreshAlxFieldDiagnostics();
     void restoreDocumentState();
+    void applyVisualSettings(const VisualSettings& settings, bool checkpoint);
     void showVisualSettingsDialog();
     void updateEditSummary();
     void updateDiagnosticsButton();
@@ -118,6 +119,8 @@ private:
     QAction* redoAction_ = nullptr;
     QAction* reviewChangesAction_ = nullptr;
     QAction* diagnosticsAction_ = nullptr;
+    QAction* encounterEdgesAction_ = nullptr;
+    QAction* traversalBarriersAction_ = nullptr;
     QAction* selectAlxAction_ = nullptr;
     QAction* refreshAlxAction_ = nullptr;
     QAction* clearAlxAction_ = nullptr;

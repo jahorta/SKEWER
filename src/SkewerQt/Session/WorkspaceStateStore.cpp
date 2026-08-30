@@ -124,7 +124,7 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
     }
     const auto root = document.object();
     const auto schemaVersion = root.value(QStringLiteral("schema_version")).toInt();
-    if (schemaVersion < 1 || schemaVersion > 10) {
+    if (schemaVersion < 1 || schemaVersion > 11) {
         error_ = QStringLiteral("Unsupported workspace schema version.");
         return std::nullopt;
     }
@@ -147,6 +147,11 @@ std::optional<WorkspaceState> WorkspaceStateStore::load() {
             visuals.value(QStringLiteral("field_context")).toObject());
         state.visualSettings.encounterEdgesEnabled =
             visuals.value(QStringLiteral("encounter_edges_enabled")).toBool(false);
+        if (schemaVersion >= 11) {
+            state.visualSettings.traversalBarriersEnabled =
+                visuals.value(QStringLiteral(
+                    "traversal_barriers_enabled")).toBool(false);
+        }
     }
     const auto camera = root.value(QStringLiteral("camera")).toObject();
     state.orbitCenter = QVector3D(
@@ -209,9 +214,11 @@ bool WorkspaceStateStore::save(const WorkspaceState& state) {
         layerVisualSettingsToJson(visualSettings.fieldContext));
     visuals.insert(QStringLiteral("encounter_edges_enabled"),
         visualSettings.encounterEdgesEnabled);
+    visuals.insert(QStringLiteral("traversal_barriers_enabled"),
+        visualSettings.traversalBarriersEnabled);
 
     QJsonObject root{};
-    root.insert(QStringLiteral("schema_version"), 10);
+    root.insert(QStringLiteral("schema_version"), 11);
     root.insert(QStringLiteral("game_data_root"), state.gameDataRoot);
     root.insert(QStringLiteral("field_directory"), state.fieldDirectory);
     root.insert(QStringLiteral("alx_data_root"), state.alxDataRoot);

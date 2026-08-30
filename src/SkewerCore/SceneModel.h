@@ -39,6 +39,29 @@ struct RenderInstanceKey {
     bool operator==(const RenderInstanceKey&) const = default;
 };
 
+enum class TraversalClassification {
+    NotApplicable,
+    NoKnownBarrierMask,
+    BarrierMaskPresent,
+};
+
+struct TriangleMetadataInterpretation {
+    std::uint16_t sourceWord = 0;
+    std::uint16_t selectorLow15 = 0;
+    bool streamWindingHighBit = false;
+    std::uint8_t onesDigit = 0;
+    std::uint8_t tensDigit = 0;
+    std::uint8_t hundredsDigit = 0;
+    std::uint8_t thousandsDigit = 0;
+    std::uint8_t ignoredTenThousandsDigit = 0;
+    std::uint16_t decodedWord = 0;
+    bool decodedHighBit = false;
+    std::uint8_t decodedClassBits = 0;
+    std::uint8_t payloadGroupBits = 0;
+    std::uint8_t encounterSelectorBits = 0;
+    TraversalClassification traversal = TraversalClassification::NotApplicable;
+};
+
 struct SceneTriangle {
     TriangleKey key{};
     std::size_t batchIndex = 0;
@@ -99,6 +122,9 @@ struct SceneModel {
 };
 
 [[nodiscard]] std::uint8_t decodeEncounterSelector(std::uint16_t rawThirdWord) noexcept;
+[[nodiscard]] TriangleMetadataInterpretation interpretTriangleMetadata(
+    std::uint16_t rawThirdWord,
+    SceneReferenceRole referenceRole) noexcept;
 
 [[nodiscard]] float frameDistanceForSceneBounds(
     const SceneBounds& bounds,

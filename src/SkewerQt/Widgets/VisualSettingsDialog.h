@@ -53,6 +53,7 @@ private:
     LayerControls encounterControls_{};
     LayerControls contextControls_{};
     QCheckBox* encounterEdges_ = nullptr;
+    QCheckBox* traversalBarriers_ = nullptr;
     bool updating_ = false;
 };
 

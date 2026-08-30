@@ -90,12 +90,7 @@ void ViewportController::handleSceneClick(
     const float nearX, const float nearY, const float nearZ,
     const float farX, const float farY, const float farZ,
     const int modifiers) {
-    if (picker_ == nullptr) return;
-    const skewer::core::SceneRay ray{
-        { nearX, nearY, nearZ },
-        { farX - nearX, farY - nearY, farZ - nearZ }
-    };
-    const auto hit = picker_->pick(ray, sceneAdapter_.visibility());
+    const auto hit = pickScene(nearX, nearY, nearZ, farX, farY, farZ);
     const bool control = (modifiers & static_cast<int>(Qt::ControlModifier)) != 0;
     const bool shift = (modifiers & static_cast<int>(Qt::ShiftModifier)) != 0;
     if (!hit.has_value()) {
@@ -114,8 +109,29 @@ void ViewportController::handleSceneClick(
     emit selectionChanged();
 }
 
+void ViewportController::handleSceneDoubleClick(
+    const float nearX, const float nearY, const float nearZ,
+    const float farX, const float farY, const float farZ) {
+    const auto hit = pickScene(nearX, nearY, nearZ, farX, farY, farZ);
+    if (hit.has_value()) {
+        emit sceneBatchDoubleClicked(
+            static_cast<qulonglong>(hit->batchIndex));
+    }
+}
+
 void ViewportController::cameraChanged() {
     emit cameraStateChanged();
+}
+
+std::optional<skewer::core::TriangleHit> ViewportController::pickScene(
+    const float nearX, const float nearY, const float nearZ,
+    const float farX, const float farY, const float farZ) const {
+    if (picker_ == nullptr) return std::nullopt;
+    const skewer::core::SceneRay ray{
+        { nearX, nearY, nearZ },
+        { farX - nearX, farY - nearY, farZ - nearZ }
+    };
+    return picker_->pick(ray, sceneAdapter_.visibility());
 }
 
 bool ViewportController::containsTriangle(const skewer::core::TriangleKey& key) const {
@@ -133,7 +149,6 @@ void ViewportController::syncScene() {
 
 void ViewportController::syncSelection() {
     sceneAdapter_.setSelection(selection_);
-    viewport_->setSelectionMeshes(sceneAdapter_.selectionMeshes());
 }
 
 } // namespace skewer::qt

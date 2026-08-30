@@ -1,5 +1,6 @@
 #include "SceneModel.h"
 
+#include "SPICE/SpiceMLD/Model/TriangleMetadata.h"
 #include "SPICE/SpiceMLD/Parsing/Sa3dBlenderIrBuilder.h"
 
 #include <algorithm>
@@ -431,8 +432,39 @@ std::size_t appendContextMesh(
 } // namespace
 
 std::uint8_t decodeEncounterSelector(const std::uint16_t rawThirdWord) noexcept {
-    const auto rawLow15 = static_cast<std::uint16_t>(rawThirdWord & 0x7FFFU);
-    return static_cast<std::uint8_t>((rawLow15 / 10U) % 10U);
+    return spice::mld::model::decodeTriangleMetadataWord(
+        rawThirdWord).encounterSelectorBits;
+}
+
+TriangleMetadataInterpretation interpretTriangleMetadata(
+    const std::uint16_t rawThirdWord,
+    const SceneReferenceRole referenceRole) noexcept {
+    const auto decoded = spice::mld::model::decodeTriangleMetadataWord(
+        rawThirdWord);
+    const bool applicable = referenceRole == SceneReferenceRole::EventGround ||
+        referenceRole == SceneReferenceRole::OtherGround;
+    constexpr std::uint16_t kTraversalBarrierMask = 0x4800U;
+    const auto traversal = !applicable
+        ? TraversalClassification::NotApplicable
+        : (decoded.decodedU16 & kTraversalBarrierMask) == kTraversalBarrierMask
+            ? TraversalClassification::BarrierMaskPresent
+            : TraversalClassification::NoKnownBarrierMask;
+    return {
+        decoded.rawWord,
+        decoded.selectorLow15,
+        decoded.streamWindingHighBit,
+        decoded.onesDigit,
+        decoded.tensDigit,
+        decoded.hundredsDigit,
+        decoded.thousandsDigit,
+        decoded.ignoredTenThousandsDigit,
+        decoded.decodedU16,
+        decoded.decodedHighBit,
+        decoded.decodedClassBits,
+        decoded.payloadGroupBits,
+        decoded.encounterSelectorBits,
+        traversal,
+    };
 }
 
 float frameDistanceForSceneBounds(

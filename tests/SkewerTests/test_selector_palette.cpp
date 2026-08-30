@@ -167,3 +167,7 @@ TEST(VisualSettings, EnforcesSaturationFloorWithoutChangingOtherAdjustmentFloors
         skewer::qt::kVisualSaturationMinimumPercent);
     EXPECT_EQ(clamped.contrastPercent, 0);
 }
+
+TEST(VisualSettings, TraversalBarrierHighlightDefaultsOff) {
+    EXPECT_FALSE(skewer::qt::VisualSettings{}.traversalBarriersEnabled);
+}
