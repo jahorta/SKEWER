@@ -37,7 +37,7 @@ namespace {
     if (enemies.empty()) return QStringLiteral("Empty");
     QStringList parts{};
     for (const auto& [name, count] : enemies) {
-        parts.push_back(QStringLiteral("%1x%2").arg(count).arg(name));
+        parts.push_back(QStringLiteral("%1x %2").arg(count).arg(name));
     }
     return parts.join(QStringLiteral(", "));
 }
@@ -149,11 +149,11 @@ void EncounterEditorWidget::showTable(
     overallRateEditor_->setValue(table.overallEncounterRate);
     stageEditor_->setStyleSheet(document->isEctValueModified(
         { skewer::core::EctValueKind::Stage, static_cast<std::size_t>(tableIndex), 0U })
-            ? QStringLiteral("QSpinBox { background: #fff4b4; }") : QString{});
+            ? QStringLiteral("QSpinBox { background: #006444; }") : QString{});
     overallRateEditor_->setStyleSheet(document->isEctValueModified(
         { skewer::core::EctValueKind::OverallEncounterRate,
             static_cast<std::size_t>(tableIndex), 0U })
-            ? QStringLiteral("QSpinBox { background: #fff4b4; }") : QString{});
+            ? QStringLiteral("QSpinBox { background: #006444; }") : QString{});
     for (int row = 0; row < static_cast<int>(table.encounters.size()); ++row) {
         const auto& encounter = table.encounters[static_cast<std::size_t>(row)];
         auto* encounterId = new QTableWidgetItem(QString::number(encounter.encounterId));
@@ -176,12 +176,12 @@ void EncounterEditorWidget::showTable(
         if (document->isEctValueModified(
             { skewer::core::EctValueKind::EncounterId,
                 static_cast<std::size_t>(tableIndex), static_cast<std::size_t>(row) })) {
-            encounterId->setBackground(QColor(255, 244, 180));
+            encounterId->setBackground(QColor(0, 100, 84));
         }
         if (document->isEctValueModified(
             { skewer::core::EctValueKind::Weight,
                 static_cast<std::size_t>(tableIndex), static_cast<std::size_t>(row) })) {
-            weight->setBackground(QColor(255, 244, 180));
+            weight->setBackground(QColor(0, 100, 84));
         }
         encounterTable_->setItem(row, 0, encounterId);
         encounterTable_->setItem(row, 1, weight);
