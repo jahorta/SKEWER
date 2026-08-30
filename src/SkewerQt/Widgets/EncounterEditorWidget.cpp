@@ -20,6 +20,10 @@
 namespace skewer::qt {
 namespace {
 
+// Change styles
+const auto CHANGE_STYLESHEET = QStringLiteral("QSpinBox { background: #644400; }");
+const QColor CHANGE_QCOLOR = QColor(100, 84, 00);
+
 [[nodiscard]] QString formationSummary(
     const skewer::core::FormationResolution& formation) {
     std::vector<std::pair<QString, int>> enemies{};
@@ -170,11 +174,11 @@ void EncounterEditorWidget::showTable(
     overallRateEditor_->setValue(table.overallEncounterRate);
     stageEditor_->setStyleSheet(document->isEctValueModified(
         { skewer::core::EctValueKind::Stage, static_cast<std::size_t>(tableIndex), 0U })
-            ? QStringLiteral("QSpinBox { background: #006444; }") : QString{});
+            ? CHANGE_STYLESHEET : QString{});
     overallRateEditor_->setStyleSheet(document->isEctValueModified(
         { skewer::core::EctValueKind::OverallEncounterRate,
             static_cast<std::size_t>(tableIndex), 0U })
-            ? QStringLiteral("QSpinBox { background: #006444; }") : QString{});
+            ? CHANGE_STYLESHEET : QString{});
     for (int row = 0; row < static_cast<int>(table.encounters.size()); ++row) {
         const auto& encounter = table.encounters[static_cast<std::size_t>(row)];
         auto* encounterId = new QTableWidgetItem(QString::number(encounter.encounterId));
@@ -187,12 +191,12 @@ void EncounterEditorWidget::showTable(
         if (document->isEctValueModified(
             { skewer::core::EctValueKind::EncounterId,
                 static_cast<std::size_t>(tableIndex), static_cast<std::size_t>(row) })) {
-            encounterId->setBackground(QColor(0, 100, 84));
+            encounterId->setBackground(CHANGE_QCOLOR);
         }
         if (document->isEctValueModified(
             { skewer::core::EctValueKind::Weight,
                 static_cast<std::size_t>(tableIndex), static_cast<std::size_t>(row) })) {
-            weight->setBackground(QColor(0, 100, 84));
+            weight->setBackground(CHANGE_QCOLOR);
         }
         encounterTable_->setItem(row, 0, encounterId);
         encounterTable_->setItem(row, 1, weight);
@@ -216,7 +220,7 @@ void EncounterEditorWidget::updateEctValue(
     updating_ = true;
     const auto modified = document->isEctValueModified(key);
     const auto modifiedStyle = modified
-        ? QStringLiteral("QSpinBox { background: #fff4b4; }") : QString{};
+        ? CHANGE_STYLESHEET : QString{};
     switch (key.kind) {
     case skewer::core::EctValueKind::Stage:
         stageEditor_->setValue(*value);
@@ -234,7 +238,7 @@ void EncounterEditorWidget::updateEctValue(
             if (item != nullptr) {
                 item->setText(QString::number(*value));
                 item->setBackground(modified
-                    ? QColor(255, 244, 180) : QColor{});
+                    ? CHANGE_QCOLOR : QColor{});
             }
         }
         break;
