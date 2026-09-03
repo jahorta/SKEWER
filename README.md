@@ -2,7 +2,7 @@
 
 Skies Keyed Encounters: Weighting, Editing, and Regions.
 
-SKEWER is a self-contained C++/Qt desktop application for inspecting and editing *Skies of Arcadia* random-encounter regions and encounter tables. Current support targets Dreamcast.
+SKEWER is a self-contained Windows C++/Qt desktop application for inspecting and editing *Skies of Arcadia* random-encounter regions and encounter tables. Current support targets Dreamcast.
 
 ## Features
 
